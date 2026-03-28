@@ -1,12 +1,27 @@
 import type { OHLCV, Quote, SearchResult, Timeframe } from '@/types/market'
 
-const PROXY = 'https://corsproxy.io/?url='
+// In production: use our own server proxy (/api/yahoo/...)
+// In dev: use CORS proxy
+const isDev = import.meta.env.DEV
 
-function yahooUrl(path: string): string {
-  return `${PROXY}${encodeURIComponent(`https://query1.finance.yahoo.com${path}`)}`
+function yahooChartUrl(symbol: string, interval: string, range: string): string {
+  if (isDev) {
+    // Dev mode: try CORS proxy
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`
+    return `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`
+  }
+  // Production: our own proxy on same domain
+  return `/api/yahoo/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`
 }
 
-// Map timeframe to Yahoo Finance interval & range
+function yahooSearchUrl(query: string): string {
+  if (isDev) {
+    const yahooUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`
+    return `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`
+  }
+  return `/api/yahoo-search?q=${encodeURIComponent(query)}`
+}
+
 function getYahooParams(timeframe: Timeframe): { interval: string; range: string } {
   switch (timeframe) {
     case '1D': return { interval: '5m', range: '1d' }
@@ -19,14 +34,19 @@ function getYahooParams(timeframe: Timeframe): { interval: string; range: string
   }
 }
 
+async function fetchJSON(url: string): Promise<any> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const text = await res.text()
+  if (text.startsWith('<')) throw new Error('Got HTML instead of JSON')
+  return JSON.parse(text)
+}
+
 export async function getYahooHistoricalData(symbol: string, timeframe: Timeframe): Promise<OHLCV[]> {
   const { interval, range } = getYahooParams(timeframe)
-  const url = yahooUrl(`/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`)
+  const url = yahooChartUrl(symbol, interval, range)
 
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`Yahoo API error: ${res.status}`)
-
-  const data = await res.json()
+  const data = await fetchJSON(url)
   const result = data?.chart?.result?.[0]
   if (!result) throw new Error('No data from Yahoo Finance')
 
@@ -42,7 +62,6 @@ export async function getYahooHistoricalData(symbol: string, timeframe: Timefram
     const close = quote.close?.[i]
     const volume = quote.volume?.[i]
 
-    // Skip null/NaN entries
     if (open == null || high == null || low == null || close == null) continue
 
     ohlcv.push({
@@ -59,36 +78,25 @@ export async function getYahooHistoricalData(symbol: string, timeframe: Timefram
 }
 
 export async function getYahooQuote(symbol: string): Promise<Quote> {
-  const url = yahooUrl(`/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`)
+  const url = yahooChartUrl(symbol, '1d', '5d')
 
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`Yahoo API error: ${res.status}`)
-
-  const data = await res.json()
+  const data = await fetchJSON(url)
   const result = data?.chart?.result?.[0]
   if (!result) throw new Error('No data from Yahoo Finance')
 
   const meta = result.meta || {}
   const quote = result.indicators?.quote?.[0]
-  const timestamps: number[] = result.timestamp || []
 
-  // Get last and previous close
   const closes: number[] = (quote?.close || []).filter((c: number | null) => c != null)
   const price = meta.regularMarketPrice || closes[closes.length - 1] || 0
   const previousClose = meta.chartPreviousClose || meta.previousClose || closes[closes.length - 2] || price
   const change = price - previousClose
   const changePercent = previousClose !== 0 ? (change / previousClose) * 100 : 0
 
-  // Today's data
   const highs: number[] = (quote?.high || []).filter((h: number | null) => h != null)
   const lows: number[] = (quote?.low || []).filter((l: number | null) => l != null)
   const opens: number[] = (quote?.open || []).filter((o: number | null) => o != null)
   const volumes: number[] = (quote?.volume || []).filter((v: number | null) => v != null)
-
-  const todayHigh = highs.length > 0 ? highs[highs.length - 1] : price
-  const todayLow = lows.length > 0 ? lows[lows.length - 1] : price
-  const todayOpen = opens.length > 0 ? opens[opens.length - 1] : price
-  const todayVolume = volumes.length > 0 ? volumes[volumes.length - 1] : 0
 
   return {
     symbol: meta.symbol || symbol,
@@ -96,10 +104,10 @@ export async function getYahooQuote(symbol: string): Promise<Quote> {
     price: round(price),
     change: round(change),
     changePercent: round(changePercent),
-    volume: todayVolume,
-    high: round(todayHigh),
-    low: round(todayLow),
-    open: round(todayOpen),
+    volume: volumes.length > 0 ? volumes[volumes.length - 1] : 0,
+    high: round(highs.length > 0 ? highs[highs.length - 1] : price),
+    low: round(lows.length > 0 ? lows[lows.length - 1] : price),
+    open: round(opens.length > 0 ? opens[opens.length - 1] : price),
     previousClose: round(previousClose),
     week52High: meta.fiftyTwoWeekHigh ? round(meta.fiftyTwoWeekHigh) : undefined,
     week52Low: meta.fiftyTwoWeekLow ? round(meta.fiftyTwoWeekLow) : undefined,
@@ -107,12 +115,8 @@ export async function getYahooQuote(symbol: string): Promise<Quote> {
 }
 
 export async function searchYahooSymbols(query: string): Promise<SearchResult[]> {
-  const url = `${PROXY}${encodeURIComponent(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`)}`
-
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`Yahoo Search error: ${res.status}`)
-
-  const data = await res.json()
+  const url = yahooSearchUrl(query)
+  const data = await fetchJSON(url)
   const quotes = data?.quotes || []
 
   return quotes.map((q: any) => ({
