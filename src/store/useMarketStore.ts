@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import type { OHLCV, Quote, Timeframe, ChartType } from '@/types/market'
 import type { IndicatorType } from '@/types/indicators'
 
+export type DataSource = 'yahoo' | 'alphavantage' | 'demo'
+
 interface MarketState {
   currentSymbol: string
   ohlcv: OHLCV[]
@@ -11,6 +13,7 @@ interface MarketState {
   activeIndicators: IndicatorType[]
   loading: boolean
   error: string | null
+  dataSource: DataSource
   setCurrentSymbol: (symbol: string) => void
   setOHLCV: (data: OHLCV[]) => void
   setQuote: (quote: Quote) => void
@@ -19,6 +22,7 @@ interface MarketState {
   toggleIndicator: (ind: IndicatorType) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
+  setDataSource: (source: DataSource) => void
 }
 
 export const useMarketStore = create<MarketState>()((set) => ({
@@ -30,6 +34,7 @@ export const useMarketStore = create<MarketState>()((set) => ({
   activeIndicators: ['sma', 'rsi', 'macd'],
   loading: false,
   error: null,
+  dataSource: 'demo',
   setCurrentSymbol: (currentSymbol) => set({ currentSymbol }),
   setOHLCV: (ohlcv) => set({ ohlcv }),
   setQuote: (quote) => set({ quote }),
@@ -43,4 +48,5 @@ export const useMarketStore = create<MarketState>()((set) => ({
     })),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
+  setDataSource: (dataSource) => set({ dataSource }),
 }))

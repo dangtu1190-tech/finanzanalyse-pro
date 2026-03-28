@@ -1,4 +1,5 @@
 import type { OHLCV, Quote, SearchResult, Timeframe } from '@/types/market'
+import type { DataSource } from '@/store/useMarketStore'
 import { getCached, setCache } from './cache'
 import { CACHE_TTL } from '@/config/constants'
 import * as yahoo from './yahooFinance'
@@ -6,6 +7,9 @@ import * as av from './alphaVantage'
 import { generateDemoData, generateDemoQuote } from './demoData'
 
 // Data source priority: Yahoo Finance → Alpha Vantage → Demo
+
+let lastDataSource: DataSource = 'demo'
+export function getLastDataSource(): DataSource { return lastDataSource }
 
 function hasApiKey(): boolean {
   const key = localStorage.getItem('av_api_key')
@@ -21,6 +25,7 @@ export async function getHistoricalData(symbol: string, timeframe: Timeframe): P
   try {
     const data = await yahoo.getYahooHistoricalData(symbol, timeframe)
     if (data.length > 0) {
+      lastDataSource = 'yahoo'
       setCache(cacheKey, data, CACHE_TTL.daily)
       return data
     }
@@ -46,6 +51,7 @@ export async function getHistoricalData(symbol: string, timeframe: Timeframe): P
       data = data.filter(d => d.time >= cutoff)
 
       if (data.length > 0) {
+        lastDataSource = 'alphavantage'
         setCache(cacheKey, data, CACHE_TTL.daily)
         return data
       }
@@ -53,6 +59,7 @@ export async function getHistoricalData(symbol: string, timeframe: Timeframe): P
   }
 
   // 3. Fallback to demo data
+  lastDataSource = 'demo'
   const data = generateDemoData(symbol, timeframe)
   setCache(cacheKey, data, CACHE_TTL.daily)
   return data
@@ -67,6 +74,7 @@ export async function getQuote(symbol: string): Promise<Quote> {
   try {
     const quote = await yahoo.getYahooQuote(symbol)
     if (quote.price > 0) {
+      lastDataSource = 'yahoo'
       setCache(cacheKey, quote, CACHE_TTL.quote)
       return quote
     }
@@ -76,12 +84,14 @@ export async function getQuote(symbol: string): Promise<Quote> {
   if (hasApiKey()) {
     try {
       const quote = await av.getQuote(symbol)
+      lastDataSource = 'alphavantage'
       setCache(cacheKey, quote, CACHE_TTL.quote)
       return quote
     } catch { /* fallthrough */ }
   }
 
   // 3. Demo fallback
+  lastDataSource = 'demo'
   const quote = generateDemoQuote(symbol)
   setCache(cacheKey, quote, CACHE_TTL.quote)
   return quote

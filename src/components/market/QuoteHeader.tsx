@@ -1,18 +1,27 @@
 import { useMarketStore } from '@/store/useMarketStore'
 import { useWatchlistStore } from '@/store/useWatchlistStore'
 import { formatCurrency, formatPercent, formatVolume } from '@/utils/formatters'
-import { Star, StarOff } from 'lucide-react'
+import { Star, StarOff, Wifi, WifiOff, Database } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+
+const sourceConfig = {
+  yahoo: { label: 'Yahoo Finance', color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-900/20', icon: Wifi },
+  alphavantage: { label: 'Alpha Vantage', color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20', icon: Database },
+  demo: { label: 'Demo-Daten', color: 'text-yellow-500', bg: 'bg-yellow-50 dark:bg-yellow-900/20', icon: WifiOff },
+}
 
 export function QuoteHeader() {
   const quote = useMarketStore((s) => s.quote)
   const currentSymbol = useMarketStore((s) => s.currentSymbol)
+  const dataSource = useMarketStore((s) => s.dataSource)
   const { isWatching, addSymbol, removeSymbol } = useWatchlistStore()
 
   if (!quote) return null
 
   const isPositive = quote.change >= 0
   const watching = isWatching(currentSymbol)
+  const source = sourceConfig[dataSource]
+  const SourceIcon = source.icon
 
   return (
     <Card>
@@ -26,6 +35,11 @@ export function QuoteHeader() {
             >
               {watching ? <Star size={20} fill="#f59e0b" color="#f59e0b" /> : <StarOff size={20} />}
             </button>
+            {/* Data Source Badge */}
+            <div className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${source.bg} ${source.color}`}>
+              <SourceIcon size={12} />
+              <span>{source.label}</span>
+            </div>
           </div>
           <div className="text-sm text-gray-500 dark:text-gray-400">{quote.name}</div>
         </div>
