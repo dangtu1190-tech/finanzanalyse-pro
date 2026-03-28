@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #3b82f6;
+  --color-primary-dark: #2563eb;
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+  --color-bg-dark: #0f1117;
+  --color-bg-card-dark: #1a1d29;
+  --color-bg-hover-dark: #252836;
+  --color-border-dark: #2a2d3a;
+  --color-text-dark: #e2e8f0;
+  --color-text-muted-dark: #94a3b8;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.dark body, body:where(.dark *) {
+  background-color: var(--color-bg-dark);
+  color: var(--color-text-dark);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+/* Chart tooltip */
+.tv-lightweight-charts { font-family: inherit !important; }

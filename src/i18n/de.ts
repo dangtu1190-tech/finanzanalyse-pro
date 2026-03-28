@@ -1,0 +1,133 @@
+export const de = {
+  // Navigation
+  'nav.dashboard': 'Dashboard',
+  'nav.chart': 'Chart-Analyse',
+  'nav.portfolio': 'Portfolio',
+  'nav.sectors': 'Sektoren',
+  'nav.settings': 'Einstellungen',
+  'nav.watchlist': 'Watchlist',
+
+  // Dashboard
+  'dashboard.title': 'Marktübersicht',
+  'dashboard.marketOverview': 'Marktübersicht',
+  'dashboard.topSignals': 'Top Signale',
+  'dashboard.recentActivity': 'Letzte Aktivität',
+  'dashboard.myWatchlist': 'Meine Watchlist',
+
+  // Chart
+  'chart.timeframe': 'Zeitraum',
+  'chart.type': 'Charttyp',
+  'chart.indicators': 'Indikatoren',
+  'chart.candlestick': 'Kerzen',
+  'chart.line': 'Linie',
+  'chart.area': 'Fläche',
+  'chart.bar': 'Balken',
+  'chart.volume': 'Volumen',
+  'chart.fullscreen': 'Vollbild',
+
+  // Indicators
+  'indicator.sma': 'Gleitender Durchschnitt (SMA)',
+  'indicator.ema': 'Exp. Gleitender Durchschnitt (EMA)',
+  'indicator.rsi': 'Relative Stärke Index (RSI)',
+  'indicator.macd': 'MACD',
+  'indicator.bollinger': 'Bollinger Bänder',
+  'indicator.stochastic': 'Stochastik',
+  'indicator.atr': 'Average True Range (ATR)',
+  'indicator.obv': 'On-Balance Volumen (OBV)',
+  'indicator.period': 'Periode',
+  'indicator.settings': 'Indikator-Einstellungen',
+
+  // Signals
+  'signal.strongBuy': 'Starker Kauf',
+  'signal.buy': 'Kaufen',
+  'signal.hold': 'Halten',
+  'signal.sell': 'Verkaufen',
+  'signal.strongSell': 'Starker Verkauf',
+  'signal.confidence': 'Konfidenz',
+  'signal.confluence': 'Signal-Konfluenz',
+  'signal.recommendation': 'Empfehlung',
+  'signal.analysis': 'Analyse',
+  'signal.overbought': 'Überkauft',
+  'signal.oversold': 'Überverkauft',
+  'signal.bullish': 'Bullisch',
+  'signal.bearish': 'Bärisch',
+  'signal.neutral': 'Neutral',
+
+  // Portfolio
+  'portfolio.title': 'Portfolio',
+  'portfolio.totalValue': 'Gesamtwert',
+  'portfolio.totalPnL': 'Gesamt G&V',
+  'portfolio.dayChange': 'Tagesänderung',
+  'portfolio.positions': 'Positionen',
+  'portfolio.addPosition': 'Position hinzufügen',
+  'portfolio.symbol': 'Symbol',
+  'portfolio.quantity': 'Anzahl',
+  'portfolio.entryPrice': 'Einstiegspreis',
+  'portfolio.currentPrice': 'Aktueller Preis',
+  'portfolio.pnl': 'G&V',
+  'portfolio.allocation': 'Allokation',
+  'portfolio.performance': 'Performance',
+  'portfolio.riskMetrics': 'Risikokennzahlen',
+  'portfolio.sharpe': 'Sharpe Ratio',
+  'portfolio.sortino': 'Sortino Ratio',
+  'portfolio.maxDrawdown': 'Max. Drawdown',
+  'portfolio.volatility': 'Volatilität',
+  'portfolio.beta': 'Beta',
+  'portfolio.noPositions': 'Noch keine Positionen vorhanden',
+
+  // Watchlist
+  'watchlist.add': 'Zur Watchlist hinzufügen',
+  'watchlist.remove': 'Von Watchlist entfernen',
+  'watchlist.empty': 'Watchlist ist leer',
+  'watchlist.addFirst': 'Füge Symbole über die Suche hinzu',
+
+  // Market
+  'market.price': 'Preis',
+  'market.change': 'Änderung',
+  'market.volume': 'Volumen',
+  'market.high': 'Hoch',
+  'market.low': 'Tief',
+  'market.open': 'Eröffnung',
+  'market.close': 'Schluss',
+  'market.marketCap': 'Marktkapitalisierung',
+  'market.pe': 'KGV',
+  'market.dividend': 'Dividende',
+  'market.week52High': '52W Hoch',
+  'market.week52Low': '52W Tief',
+  'market.search': 'Symbol suchen...',
+
+  // Sectors
+  'sector.title': 'Sektor-Analyse',
+  'sector.heatmap': 'Sektor-Heatmap',
+  'sector.rotation': 'Sektor-Rotation',
+  'sector.performance': 'Sektor-Performance',
+  'sector.relativeStrength': 'Relative Stärke',
+
+  // Settings
+  'settings.title': 'Einstellungen',
+  'settings.apiKey': 'API-Schlüssel',
+  'settings.apiKeyPlaceholder': 'Alpha Vantage API-Schlüssel eingeben',
+  'settings.apiKeyHint': 'Kostenlos erhältlich auf alphavantage.co',
+  'settings.theme': 'Design',
+  'settings.darkMode': 'Dunkelmodus',
+  'settings.lightMode': 'Hellmodus',
+  'settings.language': 'Sprache',
+  'settings.german': 'Deutsch',
+  'settings.english': 'English',
+  'settings.saved': 'Einstellungen gespeichert',
+  'settings.dataSource': 'Datenquelle',
+
+  // Common
+  'common.loading': 'Laden...',
+  'common.error': 'Fehler',
+  'common.save': 'Speichern',
+  'common.cancel': 'Abbrechen',
+  'common.delete': 'Löschen',
+  'common.edit': 'Bearbeiten',
+  'common.close': 'Schließen',
+  'common.confirm': 'Bestätigen',
+  'common.noData': 'Keine Daten verfügbar',
+  'common.retry': 'Erneut versuchen',
+} as const
+
+export type TranslationKey = keyof typeof de
