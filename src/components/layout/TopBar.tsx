@@ -37,7 +37,7 @@ export function TopBar() {
   return (
     <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-4 dark:border-[var(--color-border-dark)] dark:bg-[var(--color-bg-card-dark)]">
       {/* Search */}
-      <div className="relative w-80">
+      <div className="relative ml-10 w-48 sm:ml-0 sm:w-64 lg:w-80">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
           ref={inputRef}
@@ -46,7 +46,7 @@ export function TopBar() {
           onChange={(e) => { setQuery(e.target.value); setShowResults(true) }}
           onFocus={() => setShowResults(true)}
           onBlur={() => setTimeout(() => setShowResults(false), 200)}
-          placeholder="Symbol suchen... (z.B. AAPL, SPY)"
+          placeholder="Symbol suchen..."
           className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
         />
         {showResults && results.length > 0 && (
@@ -65,9 +65,9 @@ export function TopBar() {
         )}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
         {/* Current Symbol */}
-        <span className="rounded-lg bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
+        <span className="hidden rounded-lg bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-600 sm:inline dark:bg-blue-900/20 dark:text-blue-400">
           {currentSymbol}
         </span>
 

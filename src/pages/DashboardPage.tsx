@@ -1,12 +1,12 @@
-import { useMemo, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { MarketOverview } from '@/components/market/MarketOverview'
 import { WatchlistPanel } from '@/components/watchlist/WatchlistPanel'
+import { NewsFeed } from '@/components/news/NewsFeed'
 import { Card } from '@/components/ui/Card'
 import { generateSignals, getSignalColor, getSignalLabel } from '@/services/signals/signalEngine'
 import { useWatchlistStore } from '@/store/useWatchlistStore'
 import { useMarketStore } from '@/store/useMarketStore'
 import { getHistoricalData } from '@/api/dataProvider'
-import { useState } from 'react'
 import type { SignalResult } from '@/types/indicators'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, Activity, BarChart3 } from 'lucide-react'
@@ -45,7 +45,7 @@ export function DashboardPage() {
         <Card title="Top Signale" action={
           <span className="text-xs text-gray-500 dark:text-gray-400">
             <Activity size={12} className="mr-1 inline" />
-            Basierend auf 7 Indikatoren
+            7 Indikatoren
           </span>
         }>
           <div className="space-y-2">
@@ -60,7 +60,7 @@ export function DashboardPage() {
                   <span className="text-sm font-semibold dark:text-white">{symbol}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-20 rounded-full bg-gray-200 dark:bg-gray-700">
+                  <div className="hidden w-20 rounded-full bg-gray-200 sm:block dark:bg-gray-700">
                     <div
                       className="h-1.5 rounded-full transition-all"
                       style={{
@@ -70,7 +70,7 @@ export function DashboardPage() {
                     />
                   </div>
                   <span
-                    className="min-w-24 rounded-full px-2 py-0.5 text-center text-xs font-semibold text-white"
+                    className="min-w-20 rounded-full px-2 py-0.5 text-center text-xs font-semibold text-white sm:min-w-24"
                     style={{ backgroundColor: getSignalColor(signal.direction) }}
                   >
                     {getSignalLabel(signal.direction)}
@@ -84,6 +84,9 @@ export function DashboardPage() {
         {/* Watchlist */}
         <WatchlistPanel />
       </div>
+
+      {/* News */}
+      <NewsFeed />
     </div>
   )
 }
