@@ -1,5 +1,5 @@
 import { createServer } from 'http'
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync, existsSync, statSync } from 'fs'
 import { join, extname } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
@@ -8,8 +8,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const PORT = parseInt(process.env.PORT || '3000')
 const DIST = join(__dirname, 'dist')
 
+console.log(`[boot] __dirname: ${__dirname}`)
+console.log(`[boot] DIST: ${DIST}`)
+console.log(`[boot] dist exists: ${existsSync(DIST)}`)
+console.log(`[boot] index.html exists: ${existsSync(join(DIST, 'index.html'))}`)
+
 const MIME = {
-  '.html': 'text/html',
+  '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript',
   '.css': 'text/css',
   '.json': 'application/json',
@@ -18,18 +23,32 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
+  '.txt': 'text/plain',
 }
 
-const indexHtml = readFileSync(join(DIST, 'index.html'))
+function getIndexHtml() {
+  const p = join(DIST, 'index.html')
+  if (existsSync(p)) return readFileSync(p)
+  return Buffer.from('<html><body><h1>Build not found. Run npm run build first.</h1></body></html>')
+}
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://localhost:${PORT}`)
+  console.log(`[req] ${req.method} ${url.pathname}`)
+
+  // Health check
+  if (url.pathname === '/health') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' })
+    res.end('ok')
+    return
+  }
 
   // Yahoo Finance chart proxy
   if (url.pathname.startsWith('/api/yahoo/v8/finance/chart/')) {
-    const symbol = url.pathname.split('/').pop()
+    const symbol = decodeURIComponent(url.pathname.split('/').pop() || '')
     const params = url.searchParams.toString()
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}${params ? '?' + params : ''}`
+    console.log(`[proxy] ${yahooUrl}`)
 
     try {
       const response = await fetch(yahooUrl, {
@@ -41,7 +60,8 @@ const server = createServer(async (req, res) => {
         'Access-Control-Allow-Origin': '*',
       })
       res.end(data)
-    } catch {
+    } catch (err) {
+      console.error(`[proxy error]`, err)
       res.writeHead(500, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'Yahoo fetch failed' }))
     }
@@ -64,7 +84,8 @@ const server = createServer(async (req, res) => {
         'Access-Control-Allow-Origin': '*',
       })
       res.end(data)
-    } catch {
+    } catch (err) {
+      console.error(`[search error]`, err)
       res.writeHead(500, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'Yahoo search failed' }))
     }
@@ -72,23 +93,37 @@ const server = createServer(async (req, res) => {
   }
 
   // Static files from dist/
-  const filePath = join(DIST, url.pathname === '/' ? 'index.html' : url.pathname)
-  if (existsSync(filePath) && !filePath.includes('..')) {
-    const ext = extname(filePath)
-    const mime = MIME[ext] || 'application/octet-stream'
-    try {
-      const content = readFileSync(filePath)
-      res.writeHead(200, { 'Content-Type': mime })
-      res.end(content)
-      return
-    } catch { /* fall through to SPA */ }
+  if (url.pathname !== '/' && !url.pathname.startsWith('/api/')) {
+    const filePath = join(DIST, url.pathname)
+    // Prevent directory traversal
+    if (filePath.startsWith(DIST) && existsSync(filePath)) {
+      try {
+        const stat = statSync(filePath)
+        if (stat.isFile()) {
+          const ext = extname(filePath)
+          const mime = MIME[ext] || 'application/octet-stream'
+          const content = readFileSync(filePath)
+          res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000' })
+          res.end(content)
+          return
+        }
+      } catch { /* fall through */ }
+    }
   }
 
-  // SPA fallback: serve index.html
-  res.writeHead(200, { 'Content-Type': 'text/html' })
-  res.end(indexHtml)
+  // SPA fallback
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+  res.end(getIndexHtml())
 })
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`FinanzAnalyse Pro running on 0.0.0.0:${PORT}`)
+  console.log(`[start] FinanzAnalyse Pro running on 0.0.0.0:${PORT}`)
+})
+
+server.on('error', (err) => {
+  console.error('[server error]', err)
+})
+
+process.on('uncaughtException', (err) => {
+  console.error('[uncaught]', err)
 })
