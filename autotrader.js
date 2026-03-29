@@ -19,8 +19,8 @@ const DEFAULT_CONFIG = {
   maxOpenPositions: 10,
   minConfidence: 65,           // Min confidence to buy
   sellConfidence: 40,          // Sell when confidence drops below
-  stopLossPercent: 8,          // Auto stop-loss
-  takeProfitPercent: 15,       // Auto take-profit
+  stopLossPercent: 12,         // Hard stop-loss (safety net, trailing stop usually triggers first)
+  takeProfitPercent: null,     // V2: No fixed TP — trailing stop lets winners run
   watchlist: [
     // US Indizes & ETFs
     'SPY', 'QQQ', 'VOO', 'VTI', 'DIA', 'IWM',
@@ -238,12 +238,48 @@ function checkVolumeConfirmation(ohlcv) {
   return { confirmed: true, reason: 'Normales Volumen', volumeRatio }
 }
 
-// ── Signal generator (with spike protection) ────────────────
+// ── EMA calculator ──────────────────────────────────────────
+function calcEMA(closes, period) {
+  const k = 2 / (period + 1)
+  let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period
+  const result = [ema]
+  for (let i = period; i < closes.length; i++) {
+    ema = closes[i] * k + ema * (1 - k)
+    result.push(ema)
+  }
+  return result
+}
+
+// ── ATR calculator ──────────────────────────────────────────
+function calcATR(data, period) {
+  const trs = []
+  for (let i = 1; i < data.length; i++) {
+    trs.push(Math.max(
+      data[i].high - data[i].low,
+      Math.abs(data[i].high - data[i - 1].close),
+      Math.abs(data[i].low - data[i - 1].close)
+    ))
+  }
+  if (trs.length < period) return []
+  let atr = trs.slice(0, period).reduce((a, b) => a + b, 0) / period
+  const result = [atr]
+  for (let i = period; i < trs.length; i++) {
+    atr = (atr * (period - 1) + trs[i]) / period
+    result.push(atr)
+  }
+  return result
+}
+
+// ── V2 MOMENTUM Signal Generator (with spike protection) ────
+// Improvements over V1:
+// - EMA10 momentum instead of slow SMA cross
+// - Trailing stop based on ATR (adapts to volatility)
+// - No fixed take-profit (lets winners run)
+// - Partial exit at RSI > 80 with >20% gain
+// - Volume confirmation bonus
 function generateSignal(ohlcv) {
   if (ohlcv.length < 50) return { direction: 'HOLD', confidence: 50, reasons: [], blocked: false }
 
-  let score = 0
-  let maxScore = 0
   const reasons = []
   const price = ohlcv[ohlcv.length - 1].close
 
@@ -251,76 +287,97 @@ function generateSignal(ohlcv) {
   const spike = detectSpike(ohlcv)
   if (spike.isSpike) {
     reasons.push(`⚠️ BLOCKIERT: ${spike.reason}`)
-    return {
-      direction: 'HOLD',
-      confidence: 50,
-      reasons,
-      blocked: true,
-      blockReason: spike.reason,
-    }
+    return { direction: 'HOLD', confidence: 50, reasons, blocked: true, blockReason: spike.reason }
   }
 
-  // ═══ VOLUME CHECK ═══
   const volume = checkVolumeConfirmation(ohlcv)
   if (!volume.confirmed) {
     reasons.push(`⚠️ ${volume.reason}`)
-    return {
-      direction: 'HOLD',
-      confidence: 45,
-      reasons,
-      blocked: true,
-      blockReason: volume.reason,
-    }
+    return { direction: 'HOLD', confidence: 45, reasons, blocked: true, blockReason: volume.reason }
   }
 
-  // ═══ REGULAR INDICATORS ═══
+  // ═══ V2 MOMENTUM INDICATORS ═══
+  let score = 0
+  let maxScore = 0
 
-  // RSI
+  // 1. EMA10 Momentum (fast trend)
+  const closes = ohlcv.map(d => d.close)
+  const ema10 = calcEMA(closes, 10)
+  const ema10cur = ema10[ema10.length - 1]
+  const ema10prev = ema10[ema10.length - 2]
+  maxScore += 2
+  if (ema10cur > ema10prev && price > ema10cur) {
+    score += 2; reasons.push('EMA10 steigend + Preis darüber → Momentum')
+  } else if (ema10cur > ema10prev) {
+    score += 1; reasons.push('EMA10 steigend')
+  } else if (ema10cur < ema10prev && price < ema10cur) {
+    score -= 2; reasons.push('EMA10 fallend + Preis darunter')
+  } else {
+    score -= 1; reasons.push('EMA10 fallend')
+  }
+
+  // 2. Trend: Price vs SMA50
+  const sma50 = calcSMA(ohlcv, 50)
+  const s50 = sma50[sma50.length - 1]
+  maxScore += 2
+  if (price > s50) {
+    score += 2; reasons.push(`Preis über SMA50 (${s50.toFixed(2)}) → Aufwärtstrend`)
+  } else {
+    score -= 2; reasons.push(`Preis unter SMA50 (${s50.toFixed(2)}) → Abwärtstrend`)
+  }
+
+  // 3. RSI sweet spot (40-65 = ideal for momentum entry)
   const rsi = calcRSI(ohlcv, 14)
   maxScore += 2
-  if (rsi < 30) { score += 2; reasons.push(`RSI ${rsi.toFixed(0)} überverkauft`) }
-  else if (rsi < 40) { score += 1; reasons.push(`RSI ${rsi.toFixed(0)} niedrig`) }
-  else if (rsi > 70) { score -= 2; reasons.push(`RSI ${rsi.toFixed(0)} überkauft`) }
-  else if (rsi > 60) { score -= 1; reasons.push(`RSI ${rsi.toFixed(0)} hoch`) }
-
-  // SMA 20/50
-  const sma20 = calcSMA(ohlcv, 20)
-  const sma50 = calcSMA(ohlcv, 50)
-  maxScore += 2
-  if (sma20.length > 0 && sma50.length > 0) {
-    const s20 = sma20[sma20.length - 1]
-    const s50 = sma50[sma50.length - 1]
-    if (price > s20 && s20 > s50) { score += 2; reasons.push('Preis > SMA20 > SMA50') }
-    else if (price > s20) { score += 1; reasons.push('Preis > SMA20') }
-    else if (price < s20 && s20 < s50) { score -= 2; reasons.push('Preis < SMA20 < SMA50') }
-    else if (price < s20) { score -= 1; reasons.push('Preis < SMA20') }
+  if (rsi > 40 && rsi < 65) {
+    score += 2; reasons.push(`RSI ${rsi.toFixed(0)} im Sweet Spot (40-65)`)
+  } else if (rsi >= 65 && rsi < 80) {
+    score += 0; reasons.push(`RSI ${rsi.toFixed(0)} — Momentum, aber erhöht`)
+  } else if (rsi >= 80) {
+    score -= 2; reasons.push(`RSI ${rsi.toFixed(0)} überkauft → Teilverkauf empfohlen`)
+  } else if (rsi < 30) {
+    score += 1; reasons.push(`RSI ${rsi.toFixed(0)} überverkauft → möglicher Dip-Buy`)
+  } else {
+    score -= 1; reasons.push(`RSI ${rsi.toFixed(0)} schwach`)
   }
 
-  // MACD
+  // 4. Price near EMA10 (good entry, not chasing)
+  const distToEma = Math.abs(price - ema10cur) / price
+  maxScore += 1
+  if (distToEma < 0.02) {
+    score += 1; reasons.push(`Preis nah an EMA10 (${(distToEma * 100).toFixed(1)}%) → guter Einstieg`)
+  } else if (distToEma > 0.05) {
+    score -= 1; reasons.push(`Preis weit von EMA10 (${(distToEma * 100).toFixed(1)}%) → überdehnt`)
+  }
+
+  // 5. MACD direction
   const macd = calcMACD(ohlcv)
-  maxScore += 2
+  maxScore += 1
   if (macd.histogram > 0) { score += 1; reasons.push('MACD positiv') }
   else { score -= 1; reasons.push('MACD negativ') }
 
-  // SMA 200
+  // 6. SMA200 long-term filter
   if (ohlcv.length >= 200) {
     const sma200 = calcSMA(ohlcv, 200)
     maxScore += 1
     if (sma200.length > 0 && price > sma200[sma200.length - 1]) {
-      score += 1; reasons.push('Über SMA200')
+      score += 1; reasons.push('Über SMA200 → Langfristtrend intakt')
     } else {
-      score -= 1; reasons.push('Unter SMA200')
+      score -= 1; reasons.push('Unter SMA200 → Langfristtrend negativ')
     }
   }
 
-  // ═══ VOLUME BONUS/PENALTY ═══
+  // 7. Volume bonus
   if (volume.volumeRatio > 1.5) {
-    // High volume confirms the direction
     const bonus = score > 0 ? 1 : score < 0 ? -1 : 0
     score += bonus
     maxScore += 1
     reasons.push(`Volumen ${volume.volumeRatio.toFixed(1)}x bestätigt Signal`)
   }
+
+  // Calculate ATR for trailing stop info
+  const atrArr = calcATR(ohlcv, 14)
+  const atr = atrArr.length > 0 ? atrArr[atrArr.length - 1] : price * 0.02
 
   const normalized = maxScore > 0 ? score / maxScore : 0
   const confidence = Math.round((normalized + 1) * 50)
@@ -332,7 +389,7 @@ function generateSignal(ohlcv) {
   else if (normalized > -0.4) direction = 'SELL'
   else direction = 'STRONG_SELL'
 
-  return { direction, confidence, reasons, blocked: false }
+  return { direction, confidence, reasons, blocked: false, atr, rsi }
 }
 
 // ── Trading logic ───────────────────────────────────────────
@@ -355,6 +412,7 @@ function executeBuy(data, symbol, price, signal) {
     entryPrice: price,
     entryDate: new Date().toISOString(),
     currentPrice: price,
+    highestPrice: price,  // Track for trailing stop
   })
 
   const trade = {
@@ -456,28 +514,57 @@ async function checkAndTrade() {
       const held = data.portfolio.positions.find(p => p.symbol === symbol)
       if (held) {
         held.currentPrice = price
+        if (price > (held.highestPrice || held.entryPrice)) {
+          held.highestPrice = price  // Track highest for trailing stop
+        }
         const pnlPercent = ((price - held.entryPrice) / held.entryPrice) * 100
+        const atr = signal.atr || price * 0.02
 
-        // Check stop-loss
+        // V2: Trailing Stop (2.5x ATR from highest price)
+        const trailingStop = (held.highestPrice || held.entryPrice) - atr * 2.5
+        if (price <= trailingStop) {
+          executeSell(data, symbol, price, `Trailing Stop bei $${trailingStop.toFixed(2)} (ATR: $${atr.toFixed(2)}, Höchst: $${(held.highestPrice || price).toFixed(2)})`, signal)
+          continue
+        }
+
+        // Hard stop-loss (safety net)
         if (data.config.stopLossPercent && pnlPercent <= -data.config.stopLossPercent) {
-          executeSell(data, symbol, price, `Stop-Loss (-${data.config.stopLossPercent}%) ausgelöst`, signal)
+          executeSell(data, symbol, price, `Hard Stop-Loss (-${data.config.stopLossPercent}%) ausgelöst`, signal)
           continue
         }
 
-        // Check take-profit
-        if (data.config.takeProfitPercent && pnlPercent >= data.config.takeProfitPercent) {
-          executeSell(data, symbol, price, `Take-Profit (+${data.config.takeProfitPercent}%) erreicht`, signal)
+        // V2: Partial exit at RSI > 80 with >20% gain (sell half, keep half)
+        if (signal.rsi && signal.rsi > 80 && pnlPercent > 20 && held.quantity > 1) {
+          const sellQty = Math.floor(held.quantity / 2)
+          if (sellQty > 0) {
+            const pnl = (price - held.entryPrice) * sellQty
+            held.quantity -= sellQty
+            data.portfolio.cash += sellQty * price
+            data.tradeLog.unshift({
+              id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+              symbol, type: 'PARTIAL_SELL', quantity: sellQty, price,
+              date: new Date().toISOString(),
+              reason: `Teilverkauf: RSI ${signal.rsi.toFixed(0)} überkauft + ${pnlPercent.toFixed(1)}% Gewinn → halbe Position gesichert`,
+              confidence: signal.confidence,
+              pnl: Math.round(pnl * 100) / 100,
+              pnlPercent: Math.round(pnlPercent * 100) / 100,
+            })
+            data.stats.totalTrades++
+            data.stats.winningTrades++
+            data.stats.totalPnL = Math.round((data.stats.totalPnL + pnl) * 100) / 100
+            console.log(`[AUTO-TRADE] PARTIAL SELL ${sellQty}x ${symbol} @ $${price.toFixed(2)} | +${pnlPercent.toFixed(1)}% | RSI ${signal.rsi.toFixed(0)}`)
+          }
           continue
         }
 
-        // Check sell signal
+        // Trend break: sell signal with low confidence
         if (data.config.sellSignals.includes(signal.direction) && signal.confidence <= data.config.sellConfidence) {
-          executeSell(data, symbol, price, `Signal: ${signal.direction} (${signal.confidence}%)`, signal)
+          executeSell(data, symbol, price, `Signal: ${signal.direction} (${signal.confidence}%) — Trendbruch`, signal)
           continue
         }
       }
 
-      // Check buy signal
+      // Check buy signal (V2: requires momentum + trend + RSI sweet spot)
       if (!held && data.config.allowedSignals.includes(signal.direction) && signal.confidence >= data.config.minConfidence) {
         executeBuy(data, symbol, price, signal)
       }
