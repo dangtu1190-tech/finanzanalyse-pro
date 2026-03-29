@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>FinanzAnalyse Pro — Produktübersicht</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      color: #1e293b;
+      line-height: 1.6;
+      background: #fff;
+    }
+
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 40px 48px;
+      page-break-after: always;
+      position: relative;
+    }
+
+    .page:last-child { page-break-after: auto; }
+
+    /* Header */
+    .hero {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f1b2d 100%);
+      color: white;
+      padding: 60px 48px;
+      min-height: 297mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .hero .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 48px;
+    }
+
+    .hero .logo-icon {
+      width: 56px;
+      height: 56px;
+      background: #3b82f6;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .hero .logo-icon svg { width: 32px; height: 32px; }
+
+    .hero .logo-text {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .hero h1 {
+      font-size: 48px;
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 span { color: #60a5fa; }
+
+    .hero .subtitle {
+      font-size: 20px;
+      font-weight: 300;
+      color: #94a3b8;
+      margin-bottom: 48px;
+      max-width: 500px;
+    }
+
+    .hero .highlights {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      margin-top: 32px;
+    }
+
+    .hero .highlight-card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .hero .highlight-card .number {
+      font-size: 36px;
+      font-weight: 800;
+      color: #60a5fa;
+    }
+
+    .hero .highlight-card .label {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    .hero .footer-note {
+      margin-top: auto;
+      padding-top: 48px;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    /* Section pages */
+    .page h2 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .page h2 .icon {
+      width: 36px;
+      height: 36px;
+      background: #eff6ff;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #3b82f6;
+      font-size: 18px;
+    }
+
+    .page .section-subtitle {
+      font-size: 14px;
+      color: #64748b;
+      margin-bottom: 28px;
+    }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #f1f5f9;
+      margin-bottom: 32px;
+    }
+
+    .page-header .brand {
+      font-size: 13px;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+
+    .page-number {
+      position: absolute;
+      bottom: 32px;
+      right: 48px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    /* Feature cards */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .feature-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 20px;
+      background: #fafbfc;
+    }
+
+    .feature-card.full { grid-column: 1 / -1; }
+
+    .feature-card h3 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .feature-card h3 .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .feature-card ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .feature-card li {
+      font-size: 12.5px;
+      color: #475569;
+      padding: 3px 0;
+      padding-left: 16px;
+      position: relative;
+    }
+
+    .feature-card li::before {
+      content: '✓';
+      position: absolute;
+      left: 0;
+      color: #10b981;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    .feature-card p {
+      font-size: 12.5px;
+      color: #475569;
+    }
+
+    /* Indicator table */
+    .indicator-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+
+    .indicator-table th {
+      background: #f1f5f9;
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 8px 12px;
+      text-align: left;
+      border-radius: 6px;
+    }
+
+    .indicator-table td {
+      font-size: 12.5px;
+      padding: 8px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #334155;
+    }
+
+    .indicator-table .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .tag-overlay { background: #dbeafe; color: #1d4ed8; }
+    .tag-panel { background: #fef3c7; color: #92400e; }
+
+    /* Signal flow */
+    .signal-flow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin: 24px 0;
+      flex-wrap: wrap;
+    }
+
+    .signal-box {
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: white;
+      text-align: center;
+      min-width: 100px;
+    }
+
+    .signal-arrow {
+      font-size: 18px;
+      color: #cbd5e1;
+    }
+
+    /* Strategy cards */
+    .strategy-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .strategy-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 16px;
+      background: linear-gradient(135deg, #fafbfc 0%, #f8fafc 100%);
+    }
+
+    .strategy-card h4 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .strategy-card p {
+      font-size: 11.5px;
+      color: #64748b;
+    }
+
+    /* Tech stack */
+    .tech-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .tech-pill {
+      background: #f1f5f9;
+      color: #334155;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page { margin: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- PAGE 1: Cover -->
+<div class="hero page">
+  <div class="logo-row">
+    <div class="logo-icon">
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6 22L12 14L18 18L26 8" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="26" cy="8" r="2" fill="white"/>
+      </svg>
+    </div>
+    <div class="logo-text">FinanzAnalyse Pro</div>
+  </div>
+
+  <h1>Professionelle<br>Marktanalyse.<br><span>Intelligente Signale.</span></h1>
+  <div class="subtitle">
+    Die All-in-One Plattform für technische Analyse, KI-gestützte Handelsempfehlungen, automatisierten Handel und Backtesting — für Aktien, ETFs und Anleihen.
+  </div>
+
+  <div class="highlights">
+    <div class="highlight-card">
+      <div class="number">7</div>
+      <div class="label">Technische Indikatoren<br>mit Konfluenz-Analyse</div>
+    </div>
+    <div class="highlight-card">
+      <div class="number">4</div>
+      <div class="label">Backtesting-Strategien<br>mit historischen Daten</div>
+    </div>
+    <div class="highlight-card">
+      <div class="number">11</div>
+      <div class="label">Sektor-ETFs<br>mit Heatmap-Analyse</div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    Produktübersicht · Stand März 2026
+  </div>
+</div>
+
+<!-- PAGE 2: Chart-Analyse & Indikatoren -->
+<div class="page">
+  <div class="page-header">
+    <h2><div class="icon">📊</div> Chart-Analyse & Technische Indikatoren</h2>
+    <div class="brand">FinanzAnalyse Pro</div>
+  </div>
+  <div class="section-subtitle">TradingView-Charts in Profi-Qualität mit 7 frei kombinierbaren technischen Indikatoren.</div>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#3b82f6"></span> Chart-Typen</h3>
+      <ul>
+        <li>Candlestick (Kerzen)</li>
+        <li>Linien-Chart</li>
+        <li>Flächen-Chart</li>
+        <li>Balken-Chart</li>
+        <li>Volumenanzeige (Kauf/Verkauf)</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#10b981"></span> Zeiträume</h3>
+      <ul>
+        <li>1 Tag (Intraday)</li>
+        <li>1 Woche / 1 Monat / 3 Monate</li>
+        <li>6 Monate / 1 Jahr</li>
+        <li>5 Jahre (langfristig)</li>
+        <li>Automatische Daten-Aggregation</li>
+      </ul>
+    </div>
+  </div>
+
+  <table class="indicator-table" style="margin-top:24px">
+    <thead>
+      <tr>
+        <th>Indikator</th>
+        <th>Parameter</th>
+        <th>Anzeige</th>
+        <th>Nutzen</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>SMA</strong> — Gleitender Durchschnitt</td>
+        <td>20, 50, 200</td>
+        <td><span class="tag tag-overlay">Overlay</span></td>
+        <td>Trendrichtung & Support/Resistance</td>
+      </tr>
+      <tr>
+        <td><strong>EMA</strong> — Exp. Durchschnitt</td>
+        <td>12, 26, 50</td>
+        <td><span class="tag tag-overlay">Overlay</span></td>
+        <td>Schnellere Trenderkennung</td>
+      </tr>
+      <tr>
+        <td><strong>RSI</strong> — Relative Stärke</td>
+        <td>14 Perioden</td>
+        <td><span class="tag tag-panel">Panel</span></td>
+        <td>Überkauft/Überverkauft (70/30)</td>
+      </tr>
+      <tr>
+        <td><strong>MACD</strong></td>
+        <td>12, 26, 9</td>
+        <td><span class="tag tag-panel">Panel</span></td>
+        <td>Momentum & Trendwechsel</td>
+      </tr>
+      <tr>
+        <td><strong>Bollinger Bänder</strong></td>
+        <td>20, 2σ</td>
+        <td><span class="tag tag-overlay">Overlay</span></td>
+        <td>Volatilität & Preisextreme</td>
+      </tr>
+      <tr>
+        <td><strong>Stochastik</strong></td>
+        <td>%K 14, %D 3</td>
+        <td><span class="tag tag-panel">Panel</span></td>
+        <td>Kurzfristige Wendepunkte</td>
+      </tr>
+      <tr>
+        <td><strong>ATR</strong> — Average True Range</td>
+        <td>14 Perioden</td>
+        <td><span class="tag tag-panel">Panel</span></td>
+        <td>Volatilitätsmessung & Stop-Loss</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="page-number">2</div>
+</div>
+
+<!-- PAGE 3: KI-Analyst -->
+<div class="page">
+  <div class="page-header">
+    <h2><div class="icon">🧠</div> KI-Analyst — Intelligente Handelsempfehlungen</h2>
+    <div class="brand">FinanzAnalyse Pro</div>
+  </div>
+  <div class="section-subtitle">Automatisierte Analyse auf Basis von 7 Indikatoren mit konkreten Handelsentscheidungen.</div>
+
+  <!-- Signal Flow -->
+  <div style="text-align:center; margin-bottom:8px; font-size:12px; color:#64748b; font-weight:600;">KONFLUENZ-BASIERTES SIGNAL-SYSTEM</div>
+  <div class="signal-flow">
+    <div class="signal-box" style="background:#047857">Starker Kauf</div>
+    <span class="signal-arrow">→</span>
+    <div class="signal-box" style="background:#10b981">Kaufen</div>
+    <span class="signal-arrow">→</span>
+    <div class="signal-box" style="background:#f59e0b">Halten</div>
+    <span class="signal-arrow">→</span>
+    <div class="signal-box" style="background:#f87171">Verkaufen</div>
+    <span class="signal-arrow">→</span>
+    <div class="signal-box" style="background:#dc2626">Starker Verkauf</div>
+  </div>
+
+  <div class="feature-grid" style="margin-top: 20px">
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#3b82f6"></span> Konkrete Empfehlung</h3>
+      <ul>
+        <li>Einstiegspreis berechnet</li>
+        <li>Stop-Loss (basiert auf ATR × 2)</li>
+        <li>Kursziel / Take-Profit (ATR × 3)</li>
+        <li>Chance/Risiko-Verhältnis (z.B. 1.5:1)</li>
+        <li>Positionsgröße (2%-Risiko-Regel)</li>
+        <li>Konfidenz-Score (0–100%)</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#8b5cf6"></span> Detaillierte Textanalyse</h3>
+      <ul>
+        <li>Trendanalyse (kurz-/mittel-/langfristig)</li>
+        <li>Momentum & RSI-Bewertung</li>
+        <li>Volatilitäts-Einschätzung</li>
+        <li>Signal-Konfluenz-Erklärung</li>
+        <li>Wichtige Kursmarken (Support/Resistance)</li>
+        <li>Automatische Warnhinweise</li>
+      </ul>
+    </div>
+    <div class="feature-card full">
+      <h3><span class="dot" style="background:#f59e0b"></span> So funktioniert die Konfluenz-Methode</h3>
+      <p style="margin-top:4px">
+        Jeder der 7 Indikatoren liefert ein eigenes Sub-Signal (Kauf/Verkauf/Neutral) mit einer Gewichtung.
+        Die Signale werden aggregiert: Stimmen mehrere Indikatoren überein, steigt die Konfidenz.
+        Erst bei hoher Übereinstimmung wird eine klare Kauf- oder Verkaufsempfehlung ausgesprochen.
+        Dies reduziert Fehlsignale einzelner Indikatoren erheblich und entspricht der Arbeitsweise professioneller Trader.
+      </p>
+    </div>
+  </div>
+
+  <div class="page-number">3</div>
+</div>
+
+<!-- PAGE 4: Auto-Trader -->
+<div class="page">
+  <div class="page-header">
+    <h2><div class="icon">🤖</div> Auto-Trader — Automatisierter Handel</h2>
+    <div class="brand">FinanzAnalyse Pro</div>
+  </div>
+  <div class="section-subtitle">24/7 automatisierter Paper-Trading Bot auf dem Server — handelt während Sie schlafen.</div>
+
+  <div style="background:linear-gradient(135deg, #059669, #047857); border-radius:12px; padding:24px; color:white; margin-bottom:20px;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+      <div style="background:rgba(255,255,255,0.2); border-radius:8px; padding:8px; font-size:24px;">🤖</div>
+      <div>
+        <div style="font-size:18px; font-weight:700;">Vollautomatischer Trading-Bot</div>
+        <div style="font-size:13px; opacity:0.8;">Prüft Ihre Watchlist alle 15 Minuten — auch nachts und am Wochenende</div>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+      <div style="background:rgba(255,255,255,0.1); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:24px; font-weight:800;">24/7</div>
+        <div style="font-size:11px; opacity:0.8;">Server läuft durchgehend</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.1); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:24px; font-weight:800;">$100k</div>
+        <div style="font-size:11px; opacity:0.8;">Virtuelles Startkapital</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.1); border-radius:8px; padding:12px; text-align:center;">
+        <div style="font-size:24px; font-weight:800;">7</div>
+        <div style="font-size:11px; opacity:0.8;">Indikatoren pro Signal</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#10b981"></span> Automatische Kauf-Regeln</h3>
+      <ul>
+        <li>Kauft bei Signal "Starker Kauf" oder "Kaufen"</li>
+        <li>Nur wenn Konfidenz über einstellbarem Schwellwert (z.B. 65%)</li>
+        <li>Max. Positionsgröße begrenzt (z.B. 20% pro Position)</li>
+        <li>Max. gleichzeitige Positionen begrenzt</li>
+        <li>Basiert auf 7-Indikator-Konfluenz</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#ef4444"></span> Automatische Verkauf-Regeln</h3>
+      <ul>
+        <li>Verkauft bei "Verkaufen" oder "Starker Verkauf" Signal</li>
+        <li>Automatischer Stop-Loss (z.B. bei -8%)</li>
+        <li>Automatischer Take-Profit (z.B. bei +15%)</li>
+        <li>Alle Parameter über die UI einstellbar</li>
+        <li>Vollständiger Trade-Log mit P&L</li>
+      </ul>
+    </div>
+    <div class="feature-card full">
+      <h3><span class="dot" style="background:#3b82f6"></span> Dashboard & Kontrolle</h3>
+      <p style="margin-top:4px">
+        Morgens öffnen Sie die App und sehen sofort: Welche Trades hat der Bot nachts ausgeführt?
+        Wie steht das Portfolio? Das Dashboard zeigt Portfolio-Wert, Gesamt-G&V, Trefferquote,
+        alle offenen Positionen mit aktuellem Kurs, und den vollständigen Trade-Verlauf mit Begründung
+        für jeden einzelnen Trade. Paper Trading mit $100.000 virtuellem Kapital — kein Risiko.
+        Bei Erfolg kann ein echter Broker (z.B. Alpaca) angebunden werden.
+      </p>
+    </div>
+  </div>
+
+  <div class="page-number">4</div>
+</div>
+
+<!-- PAGE 5: Backtesting -->
+<div class="page">
+  <div class="page-header">
+    <h2><div class="icon">🧪</div> Backtesting — Strategien historisch testen</h2>
+    <div class="brand">FinanzAnalyse Pro</div>
+  </div>
+  <div class="section-subtitle">Testen Sie Handelsstrategien gegen historische Marktdaten, bevor echtes Kapital eingesetzt wird.</div>
+
+  <div class="strategy-grid">
+    <div class="strategy-card">
+      <h4>📈 SMA-Kreuzung (20/50)</h4>
+      <p>Kauft bei Golden Cross (SMA20 kreuzt SMA50 nach oben), verkauft bei Death Cross.</p>
+    </div>
+    <div class="strategy-card">
+      <h4>📉 RSI-Umkehr (30/70)</h4>
+      <p>Kauft wenn RSI aus dem überverkauften Bereich dreht, verkauft bei Überkauft-Umkehr.</p>
+    </div>
+    <div class="strategy-card">
+      <h4>📊 MACD-Crossover</h4>
+      <p>Kauft bei positivem Histogramm-Crossover, verkauft bei negativem Crossover.</p>
+    </div>
+    <div class="strategy-card">
+      <h4>🎯 Bollinger-Abpraller</h4>
+      <p>Kauft bei Abpraller am unteren Band (Mean Reversion), verkauft nahe dem oberen Band.</p>
+    </div>
+  </div>
+
+  <div class="feature-grid" style="margin-top:24px">
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#3b82f6"></span> Konfigurierbare Parameter</h3>
+      <ul>
+        <li>Startkapital frei wählbar</li>
+        <li>Positionsgröße in Prozent</li>
+        <li>Stop-Loss Prozentsatz</li>
+        <li>Take-Profit Prozentsatz</li>
+        <li>Verschiedene Zeiträume (3M–5J)</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#10b981"></span> Auswertung & Kennzahlen</h3>
+      <ul>
+        <li>Gesamtrendite & annualisierte Rendite</li>
+        <li>Trefferquote & Profit-Faktor</li>
+        <li>Max. Drawdown & Sharpe Ratio</li>
+        <li>Equity-Kurve als Chart</li>
+        <li><strong>Vergleich: Strategie vs. Buy & Hold</strong></li>
+        <li>Vollständiger Trade-Verlauf</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="page-number">5</div>
+</div>
+
+<!-- PAGE 6: Portfolio, Sektoren, Alerts, News -->
+<div class="page">
+  <div class="page-header">
+    <h2><div class="icon">💼</div> Portfolio, Sektoren, Alerts & News</h2>
+    <div class="brand">FinanzAnalyse Pro</div>
+  </div>
+  <div class="section-subtitle">Umfassende Tools für Portfolio-Management, Sektor-Rotation und Echtzeit-Benachrichtigungen.</div>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#3b82f6"></span> Portfolio-Tracker</h3>
+      <ul>
+        <li>Positionen verwalten (Aktien, ETFs, Anleihen)</li>
+        <li>Echtzeit Gewinn & Verlust pro Position</li>
+        <li>Allokations-Diagramm (Pie-Chart)</li>
+        <li>Risikokennzahlen: Sharpe, Sortino, Max DD</li>
+        <li>Annualisierte Volatilität</li>
+        <li>Beta & Alpha vs. Benchmark</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#f59e0b"></span> Sektor-Analyse</h3>
+      <ul>
+        <li>Heatmap aller 11 US-Sektoren</li>
+        <li>Performance-Vergleich (Balkendiagramm)</li>
+        <li>Technologie, Gesundheit, Finanzen, Energie</li>
+        <li>Konsum, Industrie, Immobilien, Versorger</li>
+        <li>Direkter Klick zur Einzelanalyse</li>
+        <li>Relative Stärke auf einen Blick</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#ef4444"></span> Alerts & Benachrichtigungen</h3>
+      <ul>
+        <li>Preisalarme (über/unter einem Wert)</li>
+        <li>Indikator-Alarme (RSI, SMA20, SMA50)</li>
+        <li>Volumen-Alarme</li>
+        <li>Browser-Push-Benachrichtigungen</li>
+        <li>Benachrichtigungs-Verlauf</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="dot" style="background:#8b5cf6"></span> Nachrichten & Sentiment</h3>
+      <ul>
+        <li>Echtzeit-Nachrichtenfeed pro Symbol</li>
+        <li>Marktübergreifende Nachrichten</li>
+        <li>Automatische Stimmungsanalyse</li>
+        <li>Positiv / Neutral / Negativ Kategorisierung</li>
+        <li>Sentiment-Zusammenfassung</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="feature-card full" style="margin-top:16px; border:1px solid #e2e8f0; border-radius:12px; padding:20px; background:#fafbfc;">
+    <h3><span class="dot" style="background:#10b981"></span> Weitere Features</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; margin-top:8px;">
+      <ul style="list-style:none; padding:0;">
+        <li style="font-size:12.5px; color:#475569; padding:3px 0 3px 16px; position:relative;"><span style="position:absolute;left:0;color:#10b981;font-weight:700;font-size:11px;">✓</span> Dark / Light Mode</li>
+        <li style="font-size:12.5px; color:#475569; padding:3px 0 3px 16px; position:relative;"><span style="position:absolute;left:0;color:#10b981;font-weight:700;font-size:11px;">✓</span> Deutsch & Englisch</li>
+      </ul>
+      <ul style="list-style:none; padding:0;">
+        <li style="font-size:12.5px; color:#475569; padding:3px 0 3px 16px; position:relative;"><span style="position:absolute;left:0;color:#10b981;font-weight:700;font-size:11px;">✓</span> Symbol-Suche mit Autocomplete</li>
+        <li style="font-size:12.5px; color:#475569; padding:3px 0 3px 16px; position:relative;"><span style="position:absolute;left:0;color:#10b981;font-weight:700;font-size:11px;">✓</span> Responsive (Desktop, Tablet, Mobile)</li>
+      </ul>
+      <ul style="list-style:none; padding:0;">
+        <li style="font-size:12.5px; color:#475569; padding:3px 0 3px 16px; position:relative;"><span style="position:absolute;left:0;color:#10b981;font-weight:700;font-size:11px;">✓</span> Offline-fähig mit Demo-Daten</li>
+        <li style="font-size:12.5px; color:#475569; padding:3px 0 3px 16px; position:relative;"><span style="position:absolute;left:0;color:#10b981;font-weight:700;font-size:11px;">✓</span> Aggressives Caching</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="page-number">6</div>
+</div>
+
+<!-- PAGE 7: Tech Stack & Zusammenfassung -->
+<div class="page">
+  <div class="page-header">
+    <h2><div class="icon">⚡</div> Technologie & Zusammenfassung</h2>
+    <div class="brand">FinanzAnalyse Pro</div>
+  </div>
+
+  <div class="feature-card full" style="margin-bottom:24px; border:1px solid #e2e8f0; border-radius:12px; padding:24px; background:#fafbfc;">
+    <h3><span class="dot" style="background:#3b82f6"></span> Tech-Stack</h3>
+    <div class="tech-pills">
+      <span class="tech-pill">React 19</span>
+      <span class="tech-pill">TypeScript</span>
+      <span class="tech-pill">Vite</span>
+      <span class="tech-pill">TradingView Charts</span>
+      <span class="tech-pill">Zustand</span>
+      <span class="tech-pill">Recharts</span>
+      <span class="tech-pill">TailwindCSS v4</span>
+      <span class="tech-pill">Alpha Vantage API</span>
+    </div>
+    <p style="margin-top:16px; font-size:12.5px; color:#475569;">
+      Moderne Web-Technologien für maximale Performance und Wartbarkeit. Die App ist eine Single-Page-Application
+      und kann auf jedem Hosting-Anbieter betrieben werden (Railway, Vercel, Netlify, etc.).
+    </p>
+  </div>
+
+  <div style="background:linear-gradient(135deg, #1e3a5f, #0f1b2d); border-radius:16px; padding:32px; color:white; margin-bottom:24px;">
+    <h3 style="font-size:20px; font-weight:700; margin-bottom:16px;">Auf einen Blick</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+      <div>
+        <div style="font-size:32px; font-weight:800; color:#60a5fa;">7</div>
+        <div style="font-size:13px; color:#94a3b8;">Hauptseiten</div>
+        <div style="font-size:11px; color:#64748b; margin-top:2px;">Dashboard, Chart, Auto-Trader, Backtesting, Portfolio, Sektoren, Einstellungen</div>
+      </div>
+      <div>
+        <div style="font-size:32px; font-weight:800; color:#60a5fa;">7</div>
+        <div style="font-size:13px; color:#94a3b8;">Technische Indikatoren</div>
+        <div style="font-size:11px; color:#64748b; margin-top:2px;">SMA, EMA, RSI, MACD, Bollinger, Stochastik, ATR</div>
+      </div>
+      <div>
+        <div style="font-size:32px; font-weight:800; color:#60a5fa;">5</div>
+        <div style="font-size:13px; color:#94a3b8;">Signal-Stufen</div>
+        <div style="font-size:11px; color:#64748b; margin-top:2px;">Starker Kauf → Kaufen → Halten → Verkaufen → Starker Verkauf</div>
+      </div>
+      <div>
+        <div style="font-size:32px; font-weight:800; color:#60a5fa;">4</div>
+        <div style="font-size:13px; color:#94a3b8;">Backtesting-Strategien</div>
+        <div style="font-size:11px; color:#64748b; margin-top:2px;">SMA Cross, RSI Reversal, MACD Cross, Bollinger Bounce</div>
+      </div>
+      <div>
+        <div style="font-size:32px; font-weight:800; color:#60a5fa;">11</div>
+        <div style="font-size:13px; color:#94a3b8;">Sektoren</div>
+        <div style="font-size:11px; color:#64748b; margin-top:2px;">Alle US-Sektoren mit Heatmap & Performance-Vergleich</div>
+      </div>
+      <div>
+        <div style="font-size:32px; font-weight:800; color:#60a5fa;">24/7</div>
+        <div style="font-size:13px; color:#94a3b8;">Auto-Trader</div>
+        <div style="font-size:11px; color:#64748b; margin-top:2px;">Automatisierter Paper-Trading Bot mit $100k virtuellem Kapital</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="text-align:center; padding:24px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc;">
+    <div style="font-size:14px; color:#64748b; margin-bottom:8px;">Kontakt & Demo</div>
+    <div style="font-size:18px; font-weight:700; color:#0f172a;">FinanzAnalyse Pro</div>
+    <div style="font-size:13px; color:#64748b; margin-top:4px;">Webapp · Alle Marktdaten · Keine Installation nötig</div>
+  </div>
+
+  <div class="page-number">7</div>
+</div>
+
+</body>
+</html>
