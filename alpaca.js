@@ -6,21 +6,6 @@
 const PAPER_URL = 'https://paper-api.alpaca.markets'
 const LIVE_URL = 'https://api.alpaca.markets'
 
-function getConfig() {
-  try {
-    const { readFileSync, existsSync } = await import('fs')
-    const { join, dirname } = await import('path')
-    const { fileURLToPath } = await import('url')
-  } catch {}
-
-  // Config is stored in autotrader-data.json under config.alpaca
-  return {
-    apiKey: process.env.ALPACA_API_KEY || '',
-    secretKey: process.env.ALPACA_SECRET_KEY || '',
-    paper: process.env.ALPACA_PAPER !== 'false', // Default: paper trading
-  }
-}
-
 export class AlpacaClient {
   constructor(apiKey, secretKey, paper = true) {
     this.apiKey = apiKey
