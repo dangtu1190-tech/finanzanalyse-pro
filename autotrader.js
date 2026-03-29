@@ -1,11 +1,17 @@
 // ============================================================
-// AUTO-TRADER ENGINE — Runs on the server every 15 minutes
-// Checks watchlist, generates signals, executes paper trades
+// AUTO-TRADER ENGINE V3 — Professional-grade trading bot
+// Momentum + Sector Rotation + Institutional Detection
+// Correlation Analysis + Smart Position Sizing
 // ============================================================
 
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import {
+  getEarningsWarning, analyzeSectorStrength, getSectorSignal,
+  detectInstitutionalActivity, analyzeRelativeStrength,
+  checkWeeklyTrend, calculateSmartPositionSize,
+} from './pro-signals.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_FILE = join(__dirname, 'autotrader-data.json')
@@ -379,6 +385,22 @@ function generateSignal(ohlcv) {
   const atrArr = calcATR(ohlcv, 14)
   const atr = atrArr.length > 0 ? atrArr[atrArr.length - 1] : price * 0.02
 
+  // ═══ PRO SIGNAL: Institutional Activity ═══
+  const institutional = detectInstitutionalActivity(ohlcv)
+  if (institutional.detected) {
+    score += institutional.boost
+    maxScore += 2
+    reasons.push(`🏦 ${institutional.reason}`)
+  }
+
+  // ═══ PRO SIGNAL: Weekly Trend Confirmation ═══
+  const weeklyTrend = checkWeeklyTrend(ohlcv)
+  if (weeklyTrend.boost) {
+    score += weeklyTrend.boost
+    maxScore += 2
+    reasons.push(`📅 ${weeklyTrend.reason}`)
+  }
+
   const normalized = maxScore > 0 ? score / maxScore : 0
   const confidence = Math.round((normalized + 1) * 50)
 
@@ -389,7 +411,7 @@ function generateSignal(ohlcv) {
   else if (normalized > -0.4) direction = 'SELL'
   else direction = 'STRONG_SELL'
 
-  return { direction, confidence, reasons, blocked: false, atr, rsi }
+  return { direction, confidence, reasons, blocked: false, atr, rsi, weeklyTrend }
 }
 
 // ── Trading logic ───────────────────────────────────────────
@@ -430,6 +452,37 @@ function executeBuy(data, symbol, price, signal) {
   data.tradeLog.unshift(trade)
   data.stats.totalTrades++
   console.log(`[AUTO-TRADE] BUY ${quantity}x ${symbol} @ $${price.toFixed(2)} (${signal.direction} ${signal.confidence}%)`)
+  return trade
+}
+
+function executeBuyWithSize(data, symbol, price, signal, smartQuantity) {
+  const { config, portfolio } = data
+  const existing = portfolio.positions.find(p => p.symbol === symbol)
+  if (existing) return null
+  if (portfolio.positions.length >= config.maxOpenPositions) return null
+
+  const quantity = Math.min(smartQuantity, Math.floor(portfolio.cash / price))
+  if (quantity <= 0) return null
+
+  const cost = quantity * price
+  portfolio.cash -= cost
+  portfolio.positions.push({
+    symbol, quantity, entryPrice: price,
+    entryDate: new Date().toISOString(),
+    currentPrice: price, highestPrice: price,
+  })
+
+  const trade = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    symbol, type: 'BUY', quantity, price,
+    date: new Date().toISOString(),
+    reason: `V3 Signal: ${signal.direction} (${signal.confidence}%) — ${signal.reasons.join(', ')}`,
+    confidence: signal.confidence, pnl: 0,
+  }
+
+  data.tradeLog.unshift(trade)
+  data.stats.totalTrades++
+  console.log(`[AUTO-TRADE V3] BUY ${quantity}x ${symbol} @ $${price.toFixed(2)} (${signal.direction} ${signal.confidence}%)`)
   return trade
 }
 
@@ -480,7 +533,31 @@ async function checkAndTrade() {
     return data
   }
 
-  console.log(`[AUTO-TRADER] Prüfe ${data.config.watchlist.length} Symbole...`)
+  console.log(`[AUTO-TRADER V3] Prüfe ${data.config.watchlist.length} Symbole...`)
+
+  // ═══ PRO: Fetch sector rotation data ═══
+  let sectorStrength = {}
+  try {
+    sectorStrength = await analyzeSectorStrength(async (sym, range, interval) => {
+      const raw = await fetchYahooChart(sym, range, interval)
+      return parseOHLCV(raw)
+    })
+    const strong = Object.entries(sectorStrength).filter(([, v]) => v.strength === 'STRONG').map(([k]) => k)
+    const weak = Object.entries(sectorStrength).filter(([, v]) => v.strength === 'AVOID').map(([k]) => k)
+    if (strong.length > 0) console.log(`[SEKTOR] Stark: ${strong.join(', ')}`)
+    if (weak.length > 0) console.log(`[SEKTOR] Schwach: ${weak.join(', ')}`)
+  } catch { console.log('[SEKTOR] Konnte Sektordaten nicht laden') }
+
+  // ═══ PRO: Fetch benchmark (SPY) for relative strength ═══
+  let benchmarkOhlcv = []
+  try {
+    const benchRaw = await fetchYahooChart('SPY', '6mo', '1d')
+    benchmarkOhlcv = parseOHLCV(benchRaw)
+  } catch { /* skip */ }
+
+  // ═══ PRO: Check earnings season ═══
+  const earnings = getEarningsWarning()
+  if (earnings.active) console.log(`[EARNINGS] ${earnings.message}`)
 
   for (const symbol of data.config.watchlist) {
     try {
@@ -492,20 +569,34 @@ async function checkAndTrade() {
       const signal = generateSignal(ohlcv)
       const price = quote.price
 
+      // ═══ PRO: Add sector rotation signal ═══
+      const sectorSignal = getSectorSignal(symbol, sectorStrength)
+      if (sectorSignal.boost !== 0) {
+        signal.reasons.push(`📊 ${sectorSignal.reason}`)
+        // Adjust confidence based on sector
+        signal.confidence = Math.max(0, Math.min(100,
+          signal.confidence + sectorSignal.boost * 5))
+      }
+
+      // ═══ PRO: Add relative strength vs SPY ═══
+      if (benchmarkOhlcv.length > 20 && symbol !== 'SPY') {
+        const relStrength = analyzeRelativeStrength(ohlcv, benchmarkOhlcv)
+        if (relStrength.signal !== 0) {
+          signal.reasons.push(`💪 ${relStrength.reason}`)
+          signal.confidence = Math.max(0, Math.min(100,
+            signal.confidence + relStrength.signal * 4))
+        }
+      }
+
       // ═══ SPIKE PROTECTION: Skip this symbol if spike detected ═══
       if (signal.blocked) {
         console.log(`[AUTO-TRADER] ⚠️ ${symbol} BLOCKIERT: ${signal.blockReason}`)
-        // Log the blocked trade so user can see it
         data.tradeLog.unshift({
           id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-          symbol,
-          type: 'BLOCKED',
-          quantity: 0,
-          price,
+          symbol, type: 'BLOCKED', quantity: 0, price,
           date: new Date().toISOString(),
           reason: `🛡️ Spike-Schutz: ${signal.blockReason}`,
-          confidence: signal.confidence,
-          pnl: 0,
+          confidence: signal.confidence, pnl: 0,
         })
         continue
       }
@@ -564,9 +655,24 @@ async function checkAndTrade() {
         }
       }
 
-      // Check buy signal (V2: requires momentum + trend + RSI sweet spot)
+      // Check buy signal (V3: momentum + trend + RSI + pro signals)
       if (!held && data.config.allowedSignals.includes(signal.direction) && signal.confidence >= data.config.minConfidence) {
-        executeBuy(data, symbol, price, signal)
+        // ═══ PRO: Weekly trend must confirm ═══
+        if (signal.weeklyTrend && !signal.weeklyTrend.confirmed) {
+          console.log(`[AUTO-TRADER] ${symbol}: Kaufsignal, aber Wochentrend bestätigt nicht — überspringe`)
+          continue
+        }
+
+        // ═══ PRO: Smart position sizing ═══
+        const smartSize = calculateSmartPositionSize(
+          data.portfolio.cash, price, signal.atr || price * 0.02,
+          signal.confidence, earnings
+        )
+        if (smartSize.quantity > 0) {
+          // Override the default buy with smart sizing
+          signal.reasons.push(`📐 ${smartSize.reason}`)
+          executeBuyWithSize(data, symbol, price, signal, smartSize.quantity)
+        }
       }
 
     } catch (err) {
