@@ -21,7 +21,20 @@ const DEFAULT_CONFIG = {
   sellConfidence: 40,          // Sell when confidence drops below
   stopLossPercent: 8,          // Auto stop-loss
   takeProfitPercent: 15,       // Auto take-profit
-  watchlist: ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'TSLA', 'META', 'SPY', 'QQQ'],
+  watchlist: [
+    // US Indizes & ETFs
+    'SPY', 'QQQ', 'VOO', 'VTI', 'DIA', 'IWM',
+    // US Top Tech
+    'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'TSLA', 'META',
+    // US Growth & Momentum
+    'AMD', 'PLTR', 'COIN', 'MSTR', 'SOFI', 'CRM', 'NFLX',
+    // DAX
+    'SAP.DE', 'SIE.DE', 'ALV.DE', 'BMW.DE', 'VOW3.DE', 'MBG.DE', 'DTE.DE', 'ADS.DE', 'IFX.DE', 'BAYN.DE',
+    // Europa
+    'ASML.AS', 'NESN.SW', 'MC.PA', 'NOVO-B.CO',
+    // ETFs Europa
+    'EUNL.DE', 'EXS1.DE',
+  ],
   allowedSignals: ['STRONG_BUY', 'BUY'],   // Which signals trigger a buy
   sellSignals: ['STRONG_SELL', 'SELL'],      // Which signals trigger a sell
 }

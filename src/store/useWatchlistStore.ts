@@ -14,7 +14,7 @@ interface WatchlistState {
 export const useWatchlistStore = create<WatchlistState>()(
   persist(
     (set, get) => ({
-      symbols: ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA'],
+      symbols: ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'TSLA', 'SAP.DE', 'SIE.DE', 'ALV.DE', 'BMW.DE', 'VOW3.DE'],
       quotes: {},
       addSymbol: (symbol) =>
         set((s) => ({
