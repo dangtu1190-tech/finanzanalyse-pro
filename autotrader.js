@@ -145,14 +145,122 @@ function calcMACD(data) {
   return { histogram: fast - slow }
 }
 
-// ── Signal generator (simplified for server) ────────────────
+// ── Spike & Pump Detection ──────────────────────────────────
+function detectSpike(ohlcv) {
+  if (ohlcv.length < 20) return { isSpike: false, reason: '' }
+
+  const latest = ohlcv[ohlcv.length - 1]
+  const prev = ohlcv[ohlcv.length - 2]
+  const price = latest.close
+  const prevClose = prev.close
+
+  // 1. Price spike: >4% move in one day
+  const dailyChange = ((price - prevClose) / prevClose) * 100
+  if (Math.abs(dailyChange) > 4) {
+    return {
+      isSpike: true,
+      reason: `Tages-Spike von ${dailyChange > 0 ? '+' : ''}${dailyChange.toFixed(1)}% erkannt — Pump&Dump Risiko`,
+      dailyChange,
+    }
+  }
+
+  // 2. Volume spike: today's volume >3x the 20-day average
+  const recentVolumes = ohlcv.slice(-21, -1).map(d => d.volume)
+  const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length
+  const volumeRatio = avgVolume > 0 ? latest.volume / avgVolume : 1
+
+  if (volumeRatio > 3 && Math.abs(dailyChange) > 2) {
+    return {
+      isSpike: true,
+      reason: `Ungewöhnliches Volumen (${volumeRatio.toFixed(1)}x Durchschnitt) mit ${dailyChange > 0 ? '+' : ''}${dailyChange.toFixed(1)}% Kursänderung`,
+      dailyChange,
+      volumeRatio,
+    }
+  }
+
+  // 3. Gap detection: opening price far from previous close
+  const gapPercent = ((latest.open - prevClose) / prevClose) * 100
+  if (Math.abs(gapPercent) > 3) {
+    return {
+      isSpike: true,
+      reason: `Gap von ${gapPercent > 0 ? '+' : ''}${gapPercent.toFixed(1)}% bei Eröffnung — abwarten empfohlen`,
+      dailyChange,
+      gapPercent,
+    }
+  }
+
+  return { isSpike: false, dailyChange, volumeRatio }
+}
+
+// ── Volume confirmation ─────────────────────────────────────
+function checkVolumeConfirmation(ohlcv) {
+  if (ohlcv.length < 20) return { confirmed: true, reason: '' }
+
+  const latest = ohlcv[ohlcv.length - 1]
+  const recentVolumes = ohlcv.slice(-21, -1).map(d => d.volume)
+  const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length
+
+  if (avgVolume === 0) return { confirmed: true, reason: '' }
+
+  const volumeRatio = latest.volume / avgVolume
+
+  // Very low volume = signal not trustworthy
+  if (volumeRatio < 0.3) {
+    return {
+      confirmed: false,
+      reason: `Zu niedriges Volumen (${(volumeRatio * 100).toFixed(0)}% des Durchschnitts) — Signal nicht vertrauenswürdig`,
+      volumeRatio,
+    }
+  }
+
+  // Good volume confirms the signal
+  if (volumeRatio > 1.2) {
+    return {
+      confirmed: true,
+      reason: `Volumen bestätigt (${(volumeRatio * 100).toFixed(0)}% des Durchschnitts)`,
+      volumeRatio,
+    }
+  }
+
+  return { confirmed: true, reason: 'Normales Volumen', volumeRatio }
+}
+
+// ── Signal generator (with spike protection) ────────────────
 function generateSignal(ohlcv) {
-  if (ohlcv.length < 50) return { direction: 'HOLD', confidence: 50, reasons: [] }
+  if (ohlcv.length < 50) return { direction: 'HOLD', confidence: 50, reasons: [], blocked: false }
 
   let score = 0
   let maxScore = 0
   const reasons = []
   const price = ohlcv[ohlcv.length - 1].close
+
+  // ═══ SPIKE PROTECTION (checked first) ═══
+  const spike = detectSpike(ohlcv)
+  if (spike.isSpike) {
+    reasons.push(`⚠️ BLOCKIERT: ${spike.reason}`)
+    return {
+      direction: 'HOLD',
+      confidence: 50,
+      reasons,
+      blocked: true,
+      blockReason: spike.reason,
+    }
+  }
+
+  // ═══ VOLUME CHECK ═══
+  const volume = checkVolumeConfirmation(ohlcv)
+  if (!volume.confirmed) {
+    reasons.push(`⚠️ ${volume.reason}`)
+    return {
+      direction: 'HOLD',
+      confidence: 45,
+      reasons,
+      blocked: true,
+      blockReason: volume.reason,
+    }
+  }
+
+  // ═══ REGULAR INDICATORS ═══
 
   // RSI
   const rsi = calcRSI(ohlcv, 14)
@@ -192,6 +300,15 @@ function generateSignal(ohlcv) {
     }
   }
 
+  // ═══ VOLUME BONUS/PENALTY ═══
+  if (volume.volumeRatio > 1.5) {
+    // High volume confirms the direction
+    const bonus = score > 0 ? 1 : score < 0 ? -1 : 0
+    score += bonus
+    maxScore += 1
+    reasons.push(`Volumen ${volume.volumeRatio.toFixed(1)}x bestätigt Signal`)
+  }
+
   const normalized = maxScore > 0 ? score / maxScore : 0
   const confidence = Math.round((normalized + 1) * 50)
 
@@ -202,7 +319,7 @@ function generateSignal(ohlcv) {
   else if (normalized > -0.4) direction = 'SELL'
   else direction = 'STRONG_SELL'
 
-  return { direction, confidence, reasons }
+  return { direction, confidence, reasons, blocked: false }
 }
 
 // ── Trading logic ───────────────────────────────────────────
@@ -303,6 +420,24 @@ async function checkAndTrade() {
 
       const signal = generateSignal(ohlcv)
       const price = quote.price
+
+      // ═══ SPIKE PROTECTION: Skip this symbol if spike detected ═══
+      if (signal.blocked) {
+        console.log(`[AUTO-TRADER] ⚠️ ${symbol} BLOCKIERT: ${signal.blockReason}`)
+        // Log the blocked trade so user can see it
+        data.tradeLog.unshift({
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          symbol,
+          type: 'BLOCKED',
+          quantity: 0,
+          price,
+          date: new Date().toISOString(),
+          reason: `🛡️ Spike-Schutz: ${signal.blockReason}`,
+          confidence: signal.confidence,
+          pnl: 0,
+        })
+        continue
+      }
 
       // Update current prices for held positions
       const held = data.portfolio.positions.find(p => p.symbol === symbol)

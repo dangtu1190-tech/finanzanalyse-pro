@@ -16,6 +16,49 @@ export function generateSignals(data: OHLCV[]): SignalResult {
   const signals: IndicatorSignal[] = []
   const latest = data[data.length - 1]
 
+  // 0. SPIKE PROTECTION — check before any other indicator
+  if (data.length >= 20) {
+    const prev = data[data.length - 2]
+    const dailyChange = ((latest.close - prev.close) / prev.close) * 100
+
+    // Price spike >4%
+    if (Math.abs(dailyChange) > 4) {
+      signals.push({
+        name: 'Spike-Schutz',
+        value: dailyChange,
+        signal: 'NEUTRAL',
+        reason: `⚠️ Tages-Spike von ${dailyChange > 0 ? '+' : ''}${dailyChange.toFixed(1)}% — Pump&Dump Risiko, kein Trade`,
+        weight: 0,
+      })
+    }
+
+    // Volume spike
+    const recentVols = data.slice(-21, -1).map(d => d.volume)
+    const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length
+    const volRatio = avgVol > 0 ? latest.volume / avgVol : 1
+    if (volRatio > 3 && Math.abs(dailyChange) > 2) {
+      signals.push({
+        name: 'Volumen-Anomalie',
+        value: volRatio,
+        signal: 'NEUTRAL',
+        reason: `⚠️ Volumen ${volRatio.toFixed(1)}x über Durchschnitt mit ${dailyChange > 0 ? '+' : ''}${dailyChange.toFixed(1)}% Kursänderung`,
+        weight: 0,
+      })
+    }
+
+    // Gap detection
+    const gapPercent = ((latest.open - prev.close) / prev.close) * 100
+    if (Math.abs(gapPercent) > 3) {
+      signals.push({
+        name: 'Gap-Erkennung',
+        value: gapPercent,
+        signal: 'NEUTRAL',
+        reason: `⚠️ Gap von ${gapPercent > 0 ? '+' : ''}${gapPercent.toFixed(1)}% bei Eröffnung — abwarten empfohlen`,
+        weight: 0,
+      })
+    }
+  }
+
   // 1. RSI Signal
   const rsi = calcRSI(data, 14)
   if (rsi.length > 0) {
