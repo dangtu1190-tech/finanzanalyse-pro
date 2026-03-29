@@ -12,6 +12,7 @@ import {
   detectInstitutionalActivity, analyzeRelativeStrength,
   checkWeeklyTrend, calculateSmartPositionSize,
 } from './pro-signals.js'
+import { createAlpacaClient, testAlpacaConnection } from './alpaca.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_FILE = join(__dirname, 'autotrader-data.json')
@@ -43,6 +44,13 @@ const DEFAULT_CONFIG = {
   ],
   allowedSignals: ['STRONG_BUY', 'BUY'],   // Which signals trigger a buy
   sellSignals: ['STRONG_SELL', 'SELL'],      // Which signals trigger a sell
+  // Alpaca broker integration
+  alpaca: {
+    enabled: false,          // Set to true to execute real trades
+    apiKey: '',
+    secretKey: '',
+    paper: true,             // true = paper trading, false = real money
+  },
 }
 
 // ── Data persistence ────────────────────────────────────────
@@ -455,14 +463,40 @@ function executeBuy(data, symbol, price, signal) {
   return trade
 }
 
-function executeBuyWithSize(data, symbol, price, signal, smartQuantity) {
+// Get Alpaca client if configured
+function getAlpacaClient(config) {
+  if (!config.alpaca?.enabled || !config.alpaca?.apiKey || !config.alpaca?.secretKey) return null
+  return createAlpacaClient(config.alpaca.apiKey, config.alpaca.secretKey, config.alpaca.paper !== false)
+}
+
+async function executeBuyWithSize(data, symbol, price, signal, smartQuantity) {
   const { config, portfolio } = data
   const existing = portfolio.positions.find(p => p.symbol === symbol)
   if (existing) return null
   if (portfolio.positions.length >= config.maxOpenPositions) return null
 
+  // Skip non-US symbols for Alpaca (can only trade US stocks)
+  const alpaca = getAlpacaClient(config)
+  const isUSSymbol = !symbol.includes('.')
+
   const quantity = Math.min(smartQuantity, Math.floor(portfolio.cash / price))
   if (quantity <= 0) return null
+
+  // ═══ ALPACA: Execute real order ═══
+  let alpacaOrder = null
+  if (alpaca && isUSSymbol) {
+    try {
+      const market = await alpaca.isMarketOpen()
+      if (!market.isOpen) {
+        console.log(`[ALPACA] Markt geschlossen — Order wird bei Eröffnung ausgeführt`)
+      }
+      alpacaOrder = await alpaca.buyMarket(symbol, quantity)
+      console.log(`[ALPACA] ✅ Order platziert: ${alpacaOrder.status} — ID: ${alpacaOrder.id}`)
+    } catch (err) {
+      console.error(`[ALPACA] ❌ Order fehlgeschlagen: ${err.message}`)
+      // Still track in paper portfolio
+    }
+  }
 
   const cost = quantity * price
   portfolio.cash -= cost
@@ -472,28 +506,45 @@ function executeBuyWithSize(data, symbol, price, signal, smartQuantity) {
     currentPrice: price, highestPrice: price,
   })
 
+  const brokerInfo = alpacaOrder
+    ? ` | Alpaca ${config.alpaca.paper ? 'Paper' : 'LIVE'}: ${alpacaOrder.status}`
+    : isUSSymbol ? '' : ' | Nur Paper (kein US-Symbol)'
+
   const trade = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     symbol, type: 'BUY', quantity, price,
     date: new Date().toISOString(),
-    reason: `V3 Signal: ${signal.direction} (${signal.confidence}%) — ${signal.reasons.join(', ')}`,
+    reason: `V3 Signal: ${signal.direction} (${signal.confidence}%) — ${signal.reasons.join(', ')}${brokerInfo}`,
     confidence: signal.confidence, pnl: 0,
+    alpacaOrderId: alpacaOrder?.id || null,
   }
 
   data.tradeLog.unshift(trade)
   data.stats.totalTrades++
-  console.log(`[AUTO-TRADE V3] BUY ${quantity}x ${symbol} @ $${price.toFixed(2)} (${signal.direction} ${signal.confidence}%)`)
+  console.log(`[AUTO-TRADE V3] BUY ${quantity}x ${symbol} @ $${price.toFixed(2)} (${signal.direction} ${signal.confidence}%)${brokerInfo}`)
   return trade
 }
 
-function executeSell(data, symbol, price, reason, signal) {
-  const { portfolio } = data
+async function executeSell(data, symbol, price, reason, signal) {
+  const { config, portfolio } = data
   const posIdx = portfolio.positions.findIndex(p => p.symbol === symbol)
   if (posIdx === -1) return null
 
   const pos = portfolio.positions[posIdx]
   const pnl = (price - pos.entryPrice) * pos.quantity
   const pnlPercent = ((price - pos.entryPrice) / pos.entryPrice) * 100
+
+  // ═══ ALPACA: Execute real sell order ═══
+  const alpaca = getAlpacaClient(config)
+  const isUSSymbol = !symbol.includes('.')
+  if (alpaca && isUSSymbol) {
+    try {
+      await alpaca.sellAll(symbol)
+      console.log(`[ALPACA] ✅ Verkauf ${symbol} ausgeführt`)
+    } catch (err) {
+      console.error(`[ALPACA] ❌ Verkauf ${symbol} fehlgeschlagen: ${err.message}`)
+    }
+  }
 
   portfolio.cash += pos.quantity * price
   portfolio.positions.splice(posIdx, 1)
