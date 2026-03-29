@@ -3,6 +3,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { ChartPage } from '@/pages/ChartPage'
 import { BacktestPage } from '@/pages/BacktestPage'
+import { AutoTraderPage } from '@/pages/AutoTraderPage'
 import { PortfolioPage } from '@/pages/PortfolioPage'
 import { SectorPage } from '@/pages/SectorPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -25,6 +26,7 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/chart" element={<ChartPage />} />
+            <Route path="/autotrader" element={<AutoTraderPage />} />
             <Route path="/backtest" element={<BacktestPage />} />
             <Route path="/portfolio" element={<PortfolioPage />} />
             <Route path="/sectors" element={<SectorPage />} />

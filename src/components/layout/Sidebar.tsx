@@ -1,11 +1,12 @@
 import { clsx } from 'clsx'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, LineChart, Briefcase, PieChart, Settings, TrendingUp, FlaskConical, Menu, X } from 'lucide-react'
+import { LayoutDashboard, LineChart, Briefcase, PieChart, Settings, TrendingUp, FlaskConical, Menu, X, Bot } from 'lucide-react'
 import { useState } from 'react'
 
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/chart', icon: LineChart, label: 'Chart-Analyse' },
+  { path: '/autotrader', icon: Bot, label: 'Auto-Trader' },
   { path: '/backtest', icon: FlaskConical, label: 'Backtesting' },
   { path: '/portfolio', icon: Briefcase, label: 'Portfolio' },
   { path: '/sectors', icon: PieChart, label: 'Sektoren' },
