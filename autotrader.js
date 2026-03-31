@@ -29,6 +29,8 @@ const DEFAULT_CONFIG = {
   stopLossPercent: 12,         // Hard stop-loss (safety net, trailing stop usually triggers first)
   takeProfitPercent: null,     // V2: No fixed TP — trailing stop lets winners run
   watchlist: [
+    // Hebel-ETFs (SMA200 Strategie)
+    'TQQQ', 'UPRO',
     // US Indizes & ETFs
     'SPY', 'QQQ', 'VOO', 'VTI', 'DIA', 'IWM',
     // US Top Tech
@@ -42,8 +44,10 @@ const DEFAULT_CONFIG = {
     // ETFs Europa
     'EUNL.DE', 'EXS1.DE',
   ],
-  allowedSignals: ['STRONG_BUY', 'BUY'],   // Which signals trigger a buy
-  sellSignals: ['STRONG_SELL', 'SELL'],      // Which signals trigger a sell
+  strategy: 'auto',            // 'auto' | 'sma200' | 'v4_strict' | 'momentum_v2'
+                               // auto = SMA200 for leveraged ETFs, V4 for stocks, V2 for regular ETFs
+  allowedSignals: ['STRONG_BUY', 'BUY'],
+  sellSignals: ['STRONG_SELL', 'SELL'],
   // Alpaca broker integration
   alpaca: {
     enabled: false,          // Set to true to execute real trades
@@ -419,7 +423,158 @@ function generateSignal(ohlcv) {
   else if (normalized > -0.4) direction = 'SELL'
   else direction = 'STRONG_SELL'
 
-  return { direction, confidence, reasons, blocked: false, atr, rsi, weeklyTrend }
+  return { direction, confidence, reasons, blocked: false, atr, rsi, weeklyTrend, strategy: 'momentum_v2' }
+}
+
+// ── SMA200 SIGNAL (for leveraged ETFs) ──────────────────────
+// Simple: above SMA200 = BUY, below = SELL. Few trades, big wins.
+function generateSignalSMA200(ohlcv) {
+  if (ohlcv.length < 210) return { direction: 'HOLD', confidence: 50, reasons: ['Zu wenig Daten für SMA200'], blocked: false, strategy: 'sma200' }
+
+  const reasons = []
+  const price = ohlcv[ohlcv.length - 1].close
+  const prevPrice = ohlcv[ohlcv.length - 2].close
+
+  // Spike protection
+  const spike = detectSpike(ohlcv)
+  if (spike.isSpike) {
+    return { direction: 'HOLD', confidence: 50, reasons: [`⚠️ BLOCKIERT: ${spike.reason}`], blocked: true, blockReason: spike.reason, strategy: 'sma200' }
+  }
+
+  const sma200 = calcSMA(ohlcv, 200)
+  const s200 = sma200[sma200.length - 1]
+  const s200prev = sma200[sma200.length - 2]
+
+  const atrArr = calcATR(ohlcv, 14)
+  const atr = atrArr.length > 0 ? atrArr[atrArr.length - 1] : price * 0.02
+
+  // Price crosses ABOVE SMA200 → BUY
+  if (prevPrice <= s200prev && price > s200) {
+    reasons.push(`📈 Preis kreuzt SMA200 nach oben ($${s200.toFixed(2)}) → KAUF-Signal`)
+    return { direction: 'STRONG_BUY', confidence: 80, reasons, blocked: false, atr, strategy: 'sma200' }
+  }
+
+  // Price crosses BELOW SMA200 → SELL
+  if (prevPrice >= s200prev && price < s200) {
+    reasons.push(`📉 Preis kreuzt SMA200 nach unten ($${s200.toFixed(2)}) → VERKAUF-Signal`)
+    return { direction: 'STRONG_SELL', confidence: 80, reasons, blocked: false, atr, strategy: 'sma200' }
+  }
+
+  // Above SMA200 = bullish, below = bearish (but no new signal)
+  if (price > s200) {
+    reasons.push(`Preis über SMA200 ($${s200.toFixed(2)}) — Position halten`)
+    return { direction: 'HOLD', confidence: 60, reasons, blocked: false, atr, strategy: 'sma200' }
+  } else {
+    reasons.push(`Preis unter SMA200 ($${s200.toFixed(2)}) — keine Position`)
+    return { direction: 'HOLD', confidence: 40, reasons, blocked: false, atr, strategy: 'sma200' }
+  }
+}
+
+// ── V4 STRICTER SIGNAL (for individual stocks) ──────────────
+// Needs 4/5 confirmations, wider trailing stop, min 5 day hold
+function generateSignalV4(ohlcv) {
+  if (ohlcv.length < 210) return { direction: 'HOLD', confidence: 50, reasons: ['Zu wenig Daten'], blocked: false, strategy: 'v4_strict' }
+
+  const reasons = []
+  const price = ohlcv[ohlcv.length - 1].close
+
+  // Spike protection
+  const spike = detectSpike(ohlcv)
+  if (spike.isSpike) {
+    return { direction: 'HOLD', confidence: 50, reasons: [`⚠️ BLOCKIERT: ${spike.reason}`], blocked: true, blockReason: spike.reason, strategy: 'v4_strict' }
+  }
+
+  const volume = checkVolumeConfirmation(ohlcv)
+  if (!volume.confirmed) {
+    return { direction: 'HOLD', confidence: 45, reasons: [`⚠️ ${volume.reason}`], blocked: true, blockReason: volume.reason, strategy: 'v4_strict' }
+  }
+
+  const closes = ohlcv.map(d => d.close)
+  const ema10 = calcEMA(closes, 10)
+  const ema21 = calcEMA(closes, 21)
+  const sma50 = calcSMA(ohlcv, 50)
+  const sma200 = calcSMA(ohlcv, 200)
+  const atrArr = calcATR(ohlcv, 14)
+
+  const e10 = ema10[ema10.length - 1]
+  const e10prev = ema10[ema10.length - 2]
+  const e21val = ema21[ema21.length - 1]
+  const s50 = sma50[sma50.length - 1]
+  const s200 = sma200[sma200.length - 1]
+  const atr = atrArr.length > 0 ? atrArr[atrArr.length - 1] : price * 0.02
+  const rsi = calcRSI(ohlcv, 14)
+
+  // Count confirmations (need 4/5 for buy)
+  let confirmations = 0
+
+  // 1. Price above SMA200 (long-term uptrend)
+  if (price > s200) { confirmations++; reasons.push(`✅ Über SMA200 (${s200.toFixed(2)})`) }
+  else { reasons.push(`❌ Unter SMA200 (${s200.toFixed(2)})`) }
+
+  // 2. Price above SMA50 (medium-term)
+  if (price > s50) { confirmations++; reasons.push(`✅ Über SMA50 (${s50.toFixed(2)})`) }
+  else { reasons.push(`❌ Unter SMA50 (${s50.toFixed(2)})`) }
+
+  // 3. EMA10 rising and above EMA21 (momentum)
+  if (e10 > e10prev && e10 > e21val) { confirmations++; reasons.push('✅ EMA10 > EMA21, steigend') }
+  else { reasons.push('❌ Kein Momentum (EMA10/21)') }
+
+  // 4. RSI sweet spot
+  if (rsi > 40 && rsi < 65) { confirmations++; reasons.push(`✅ RSI ${rsi.toFixed(0)} im Sweet Spot`) }
+  else { reasons.push(`❌ RSI ${rsi.toFixed(0)} außerhalb 40-65`) }
+
+  // 5. Price near EMA10 (good entry)
+  const distEma = Math.abs(price - e10) / price
+  if (distEma < 0.025) { confirmations++; reasons.push(`✅ Nah an EMA10 (${(distEma * 100).toFixed(1)}%)`) }
+  else { reasons.push(`❌ Zu weit von EMA10 (${(distEma * 100).toFixed(1)}%)`) }
+
+  reasons.unshift(`Konfirmationen: ${confirmations}/5`)
+
+  // Pro signals
+  const institutional = detectInstitutionalActivity(ohlcv)
+  if (institutional.detected) reasons.push(`🏦 ${institutional.reason}`)
+  const weeklyTrend = checkWeeklyTrend(ohlcv)
+  if (weeklyTrend.boost) reasons.push(`📅 ${weeklyTrend.reason}`)
+
+  let direction, confidence
+  if (confirmations >= 4) {
+    direction = confirmations === 5 ? 'STRONG_BUY' : 'BUY'
+    confidence = 55 + confirmations * 8
+    if (institutional.detected && institutional.boost > 0) confidence += 5
+    if (weeklyTrend.boost > 0) confidence += 5
+  } else if (rsi > 75) {
+    direction = 'SELL'
+    confidence = 35
+  } else {
+    direction = 'HOLD'
+    confidence = 50
+  }
+
+  return { direction, confidence: Math.min(100, confidence), reasons, blocked: false, atr, rsi, weeklyTrend, strategy: 'v4_strict', confirmations }
+}
+
+// ── MASTER SIGNAL: picks strategy based on symbol type ──────
+function generateSignalForSymbol(ohlcv, symbol, strategyOverride) {
+  const strategy = strategyOverride || 'auto'
+
+  if (strategy === 'sma200') return generateSignalSMA200(ohlcv)
+  if (strategy === 'v4_strict') return generateSignalV4(ohlcv)
+  if (strategy === 'momentum_v2') return generateSignal(ohlcv)
+
+  // Auto-detect: leveraged ETFs get SMA200, stocks get V4
+  const leveragedETFs = ['TQQQ', 'SQQQ', 'UPRO', 'SPXU', 'SPXL', 'TNA', 'TZA', 'SOXL', 'SOXS', 'LABU', 'LABD', 'FNGU', 'FNGD', 'TECL', 'TECS', 'UDOW', 'SDOW']
+  if (leveragedETFs.includes(symbol)) {
+    return generateSignalSMA200(ohlcv)
+  }
+
+  // Regular ETFs get momentum V2
+  const regularETFs = ['SPY', 'QQQ', 'VOO', 'VTI', 'DIA', 'IWM', 'EUNL.DE', 'EXS1.DE', 'VWRL.AS']
+  if (regularETFs.includes(symbol)) {
+    return generateSignal(ohlcv)
+  }
+
+  // Individual stocks get V4 strict
+  return generateSignalV4(ohlcv)
 }
 
 // ── Trading logic ───────────────────────────────────────────
@@ -617,7 +772,7 @@ async function checkAndTrade() {
       const quote = getQuoteFromChart(raw, symbol)
       if (!quote || quote.price <= 0 || ohlcv.length < 50) continue
 
-      const signal = generateSignal(ohlcv)
+      const signal = generateSignalForSymbol(ohlcv, symbol, data.config.strategy)
       const price = quote.price
 
       // ═══ PRO: Add sector rotation signal ═══
@@ -662,10 +817,24 @@ async function checkAndTrade() {
         const pnlPercent = ((price - held.entryPrice) / held.entryPrice) * 100
         const atr = signal.atr || price * 0.02
 
-        // V2: Trailing Stop (2.5x ATR from highest price)
-        const trailingStop = (held.highestPrice || held.entryPrice) - atr * 2.5
-        if (price <= trailingStop) {
-          executeSell(data, symbol, price, `Trailing Stop bei $${trailingStop.toFixed(2)} (ATR: $${atr.toFixed(2)}, Höchst: $${(held.highestPrice || price).toFixed(2)})`, signal)
+        // Trailing Stop: V4=3.5x ATR, SMA200=sell on cross, V2=2.5x ATR
+        const trailMultiplier = signal.strategy === 'v4_strict' ? 3.5 : signal.strategy === 'sma200' ? 0 : 2.5
+        const trailingStop = trailMultiplier > 0 ? (held.highestPrice || held.entryPrice) - atr * trailMultiplier : 0
+
+        // SMA200 strategy: sell when price crosses below SMA200
+        if (signal.strategy === 'sma200' && signal.direction === 'STRONG_SELL') {
+          await executeSell(data, symbol, price, `SMA200 Kreuzung nach unten — Hebel-Position geschlossen`, signal)
+          continue
+        }
+
+        // V4: Minimum 5 day hold (avoid whipsaws)
+        if (signal.strategy === 'v4_strict' && held.entryDate) {
+          const holdDays = (Date.now() - new Date(held.entryDate).getTime()) / 86400000
+          if (holdDays < 5) continue // Don't sell within 5 days
+        }
+
+        if (trailingStop > 0 && price <= trailingStop) {
+          await executeSell(data, symbol, price, `Trailing Stop ${trailMultiplier}x ATR bei $${trailingStop.toFixed(2)} (Höchst: $${(held.highestPrice || price).toFixed(2)})`, signal)
           continue
         }
 

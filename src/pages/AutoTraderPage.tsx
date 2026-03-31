@@ -18,6 +18,7 @@ interface AutoTraderData {
     sellConfidence: number
     stopLossPercent: number
     takeProfitPercent: number
+    strategy: string
     watchlist: string[]
     allowedSignals: string[]
     sellSignals: string[]
@@ -242,6 +243,17 @@ export function AutoTraderPage() {
             <Settings size={14} className="text-gray-400" />
           }>
             <div className="space-y-3">
+              {/* Strategy Selection */}
+              <div>
+                <label className="mb-1 block text-xs font-medium dark:text-gray-300">Strategie</label>
+                <select value={config.strategy || 'auto'} onChange={e => updateConfig({ strategy: e.target.value })} className={inputClass}>
+                  <option value="auto">Auto (SMA200 f. Hebel, V4 f. Aktien)</option>
+                  <option value="sma200">SMA200 Hebel (wenige Trades, +108%/5J)</option>
+                  <option value="v4_strict">V4 Streng (4/5 Konfirm., +65%/5J)</option>
+                  <option value="momentum_v2">V2 Momentum (mehr Trades)</option>
+                </select>
+                <div className="mt-0.5 text-xs text-gray-400">Auto = beste Strategie je nach Symbol-Typ</div>
+              </div>
               <div>
                 <label className="mb-1 block text-xs font-medium dark:text-gray-300">Prüfintervall (Minuten)</label>
                 <input type="number" value={config.checkIntervalMinutes} onChange={e => updateConfig({ checkIntervalMinutes: parseInt(e.target.value) || 15 })} className={inputClass} />
