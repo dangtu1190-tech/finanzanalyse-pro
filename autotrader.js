@@ -14,6 +14,7 @@ import {
 } from './pro-signals.js'
 // import { createAlpacaClient, testAlpacaConnection } from './alpaca.js'
 import { createIBKRClient } from './ibkr.js'
+import { getAIAdvice, analyzeTradeHistory } from './ai-advisor.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_FILE = join(__dirname, 'autotrader-data.json')
@@ -22,27 +23,31 @@ const DATA_FILE = join(__dirname, 'autotrader-data.json')
 const DEFAULT_CONFIG = {
   enabled: false,
   checkIntervalMinutes: 15,
-  initialCapital: 100000,
-  maxPositionPercent: 20,      // Max 20% of capital per position
-  maxOpenPositions: 10,
+  initialCapital: 500,
+  maxPositionPercent: 'auto',  // 'auto' = passt sich dem Kontostand an
+  maxOpenPositions: 'auto',    // 'auto' = skaliert mit Kontostand
   minConfidence: 65,           // Min confidence to buy
   sellConfidence: 40,          // Sell when confidence drops below
   stopLossPercent: 12,         // Hard stop-loss (safety net, trailing stop usually triggers first)
   takeProfitPercent: null,     // V2: No fixed TP — trailing stop lets winners run
   watchlist: [
+    // ── IMMER (günstig, ab €500 handelbar) ──
     // Hebel-ETFs (SMA200 Strategie)
-    'TQQQ', 'UPRO',
-    // US Indizes & ETFs
+    'TQQQ', 'UPRO', 'SOXL', 'TNA',
+    // US günstige Aktien
+    'SOFI',
+    // DAX günstig
+    'DTE.DE', 'IFX.DE', 'BAYN.DE', 'MBG.DE', 'BMW.DE', 'VOW3.DE',
+    // ── AB €1.000 ──
+    'NFLX', 'MSTR',
+    // ── AB €2.000 (teurere Aktien) ──
+    'NVDA', 'AAPL', 'AMD', 'PLTR', 'COIN',
+    'SAP.DE', 'SIE.DE', 'ADS.DE',
+    // ── AB €5.000 (Premium) ──
+    'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'CRM',
+    'ALV.DE', 'ASML.AS',
+    // ── AB €10.000 (ETFs & Indizes) ──
     'SPY', 'QQQ', 'VOO', 'VTI', 'DIA', 'IWM',
-    // US Top Tech
-    'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'TSLA', 'META',
-    // US Growth & Momentum
-    'AMD', 'PLTR', 'COIN', 'MSTR', 'SOFI', 'CRM', 'NFLX',
-    // DAX
-    'SAP.DE', 'SIE.DE', 'ALV.DE', 'BMW.DE', 'VOW3.DE', 'MBG.DE', 'DTE.DE', 'ADS.DE', 'IFX.DE', 'BAYN.DE',
-    // Europa
-    'ASML.AS', 'NESN.SW', 'MC.PA', 'NOVO-B.CO',
-    // ETFs Europa
     'EUNL.DE', 'EXS1.DE',
   ],
   strategy: 'auto',            // 'auto' | 'sma200' | 'v4_strict' | 'momentum_v2'
@@ -583,9 +588,11 @@ function executeBuy(data, symbol, price, signal) {
   const existing = portfolio.positions.find(p => p.symbol === symbol)
   if (existing) return null // Already holding
 
-  if (portfolio.positions.length >= config.maxOpenPositions) return null
+  const maxPos = config._effectiveMaxPositions || config.maxOpenPositions || 3
+  if (portfolio.positions.length >= maxPos) return null
 
-  const maxInvest = portfolio.cash * (config.maxPositionPercent / 100)
+  const maxPct = config._effectiveMaxPositionPct || config.maxPositionPercent || 40
+  const maxInvest = portfolio.cash * (maxPct / 100)
   const quantity = Math.floor(maxInvest / price)
   if (quantity <= 0) return null
 
@@ -618,6 +625,30 @@ function executeBuy(data, symbol, price, signal) {
   return trade
 }
 
+// ── Currency helper: detect symbol currency ─────────────────
+// IBKR account is in EUR, US stocks cost USD → IBKR converts automatically
+// but we need to account for the ~1.08 EUR/USD rate in position sizing
+function getSymbolCurrency(symbol) {
+  if (symbol.endsWith('.DE') || symbol.endsWith('.PA')) return 'EUR'
+  if (symbol.endsWith('.AS')) return 'EUR'
+  if (symbol.endsWith('.SW')) return 'CHF'
+  if (symbol.endsWith('.CO')) return 'DKK'
+  if (symbol.endsWith('.L')) return 'GBP'
+  return 'USD' // Default: US stocks
+}
+
+const EUR_USD_RATE = 1.08 // Approximate, IBKR uses live rate
+
+function priceInEUR(price, symbol) {
+  const currency = getSymbolCurrency(symbol)
+  if (currency === 'EUR') return price
+  if (currency === 'USD') return price / EUR_USD_RATE
+  if (currency === 'CHF') return price / 0.97  // CHF~EUR
+  if (currency === 'GBP') return price / 0.86  // GBP~EUR
+  if (currency === 'DKK') return price / 7.46  // DKK~EUR
+  return price / EUR_USD_RATE
+}
+
 // Get IBKR client if configured
 function getIBKRClient(config) {
   if (!config.ibkr?.enabled) return null
@@ -628,10 +659,12 @@ async function executeBuyWithSize(data, symbol, price, signal, smartQuantity) {
   const { config, portfolio } = data
   const existing = portfolio.positions.find(p => p.symbol === symbol)
   if (existing) return null
-  if (portfolio.positions.length >= config.maxOpenPositions) return null
+  const maxPos = config._effectiveMaxPositions || config.maxOpenPositions || 3
+  if (portfolio.positions.length >= maxPos) return null
 
   const ibkr = getIBKRClient(config)
-  const quantity = Math.min(smartQuantity, Math.floor(portfolio.cash / price))
+  const costPerShareEUR = priceInEUR(price, symbol)
+  const quantity = Math.min(smartQuantity, Math.floor(portfolio.cash / costPerShareEUR))
   if (quantity <= 0) return null
 
   // ═══ IBKR: Execute real order ═══
@@ -644,31 +677,33 @@ async function executeBuyWithSize(data, symbol, price, signal, smartQuantity) {
       console.log(`[IBKR] ✅ BUY Order platziert für ${quantity}x ${symbol}`)
     } catch (err) {
       console.error(`[IBKR] ❌ BUY Order fehlgeschlagen: ${err.message}`)
-      brokerInfo = ` | IBKR Fehler: ${err.message}`
-      // Still track in paper portfolio
+      // CRITICAL: Don't track position if real order failed — prevents paper/live divergence
+      return null
     }
   }
 
-  const cost = quantity * price
-  portfolio.cash -= cost
+  const costEUR = quantity * costPerShareEUR
+  portfolio.cash -= costEUR
+  const currency = getSymbolCurrency(symbol)
   portfolio.positions.push({
-    symbol, quantity, entryPrice: price,
+    symbol, quantity, entryPrice: price, currency,
     entryDate: new Date().toISOString(),
     currentPrice: price, highestPrice: price,
   })
 
+  const currencyInfo = currency !== 'EUR' ? ` (≈€${costEUR.toFixed(0)} nach Umrechnung)` : ''
   const trade = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    symbol, type: 'BUY', quantity, price,
+    symbol, type: 'BUY', quantity, price, currency,
     date: new Date().toISOString(),
-    reason: `V3 Signal: ${signal.direction} (${signal.confidence}%) — ${signal.reasons.join(', ')}${brokerInfo}`,
+    reason: `V3 Signal: ${signal.direction} (${signal.confidence}%) — ${signal.reasons.join(', ')}${currencyInfo}${brokerInfo}`,
     confidence: signal.confidence, pnl: 0,
     ibkrOrder: brokerOrder || null,
   }
 
   data.tradeLog.unshift(trade)
   data.stats.totalTrades++
-  console.log(`[AUTO-TRADE V3] BUY ${quantity}x ${symbol} @ $${price.toFixed(2)} (${signal.direction} ${signal.confidence}%)${brokerInfo}`)
+  console.log(`[AUTO-TRADE V3] BUY ${quantity}x ${symbol} @ ${currency === 'EUR' ? '€' : '$'}${price.toFixed(2)}${currencyInfo} (${signal.direction} ${signal.confidence}%)${brokerInfo}`)
   return trade
 }
 
@@ -689,10 +724,13 @@ async function executeSell(data, symbol, price, reason, signal) {
       console.log(`[IBKR] ✅ Verkauf ${symbol} ausgeführt`)
     } catch (err) {
       console.error(`[IBKR] ❌ Verkauf ${symbol} fehlgeschlagen: ${err.message}`)
+      // CRITICAL: Don't remove position from paper if real sell failed
+      return null
     }
   }
 
-  portfolio.cash += pos.quantity * price
+  const sellPriceEUR = priceInEUR(price, symbol)
+  portfolio.cash += pos.quantity * sellPriceEUR
   portfolio.positions.splice(posIdx, 1)
 
   const trade = {
@@ -722,6 +760,36 @@ async function executeSell(data, symbol, price, reason, signal) {
   return trade
 }
 
+// ── Sektor-Zuordnung für Korrelations-Schutz ────────────────
+function getSymbolSector(symbol) {
+  const tech = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMD', 'CRM', 'PLTR', 'COIN', 'MSTR', 'SAP.DE', 'IFX.DE', 'ASML.AS']
+  const finance = ['ALV.DE', 'SOFI']
+  const auto = ['TSLA', 'BMW.DE', 'VOW3.DE', 'MBG.DE']
+  const health = ['BAYN.DE']
+  const telecom = ['DTE.DE']
+  const consumer = ['AMZN', 'NFLX', 'ADS.DE']
+  const leveraged = ['TQQQ', 'UPRO', 'SOXL', 'TNA']
+  const index = ['SPY', 'QQQ', 'VOO', 'VTI', 'DIA', 'IWM', 'EUNL.DE', 'EXS1.DE']
+  if (tech.includes(symbol)) return 'TECH'
+  if (finance.includes(symbol)) return 'FINANCE'
+  if (auto.includes(symbol)) return 'AUTO'
+  if (health.includes(symbol)) return 'HEALTH'
+  if (telecom.includes(symbol)) return 'TELECOM'
+  if (consumer.includes(symbol)) return 'CONSUMER'
+  if (leveraged.includes(symbol)) return 'LEVERAGED'
+  if (index.includes(symbol)) return 'INDEX'
+  return 'OTHER'
+}
+
+// ── Auto-Scaling: passt Config automatisch an Kontostand an ─
+function getAutoScale(portfolioValue) {
+  if (portfolioValue >= 10000) return { tier: '10k+',  maxPositionPercent: 15, maxOpenPositions: 10 }
+  if (portfolioValue >= 5000)  return { tier: '5k+',   maxPositionPercent: 20, maxOpenPositions: 7 }
+  if (portfolioValue >= 2000)  return { tier: '2k+',   maxPositionPercent: 25, maxOpenPositions: 5 }
+  if (portfolioValue >= 1000)  return { tier: '1k+',   maxPositionPercent: 35, maxOpenPositions: 4 }
+  return                              { tier: 'Starter', maxPositionPercent: 40, maxOpenPositions: 3 }
+}
+
 // ── Main check cycle ────────────────────────────────────────
 async function checkAndTrade() {
   const data = loadData()
@@ -729,6 +797,74 @@ async function checkAndTrade() {
     console.log('[AUTO-TRADER] Deaktiviert — überspringe')
     return data
   }
+
+  // ═══ AUTO-SCALING: Config an Kontostand anpassen ═══
+  const currentValue = data.portfolio.totalValue || data.portfolio.cash
+  const autoScale = getAutoScale(currentValue)
+  const effectiveMaxPositionPct = data.config.maxPositionPercent === 'auto'
+    ? autoScale.maxPositionPercent : data.config.maxPositionPercent
+  const effectiveMaxPositions = data.config.maxOpenPositions === 'auto'
+    ? autoScale.maxOpenPositions : data.config.maxOpenPositions
+  data.config._effectiveMaxPositionPct = effectiveMaxPositionPct
+  data.config._effectiveMaxPositions = effectiveMaxPositions
+
+  console.log(`[AUTO-SCALE] Kontostand: €${currentValue.toFixed(0)} → Stufe "${autoScale.tier}" | Max ${effectiveMaxPositions} Positionen à ${effectiveMaxPositionPct}% (€${(currentValue * effectiveMaxPositionPct / 100).toFixed(0)})`)
+
+  // ═══ IBKR: Check gateway auth before trading ═══
+  const ibkr = getIBKRClient(data.config)
+  if (ibkr) {
+    try {
+      const auth = await ibkr.checkAuth()
+      if (!auth.authenticated) {
+        console.log(`[IBKR] ⚠️ Gateway nicht eingeloggt! Bitte https://localhost:5000 öffnen und einloggen.`)
+        console.log(`[IBKR] ⚠️ Trading pausiert bis Gateway authentifiziert ist.`)
+        data.lastCheck = new Date().toISOString()
+        saveData(data)
+        return data
+      }
+      // Keep session alive
+      await ibkr.keepAlive()
+      console.log(`[IBKR] ✅ Gateway verbunden & authentifiziert`)
+    } catch (err) {
+      console.log(`[IBKR] ❌ Gateway nicht erreichbar: ${err.message}`)
+      console.log(`[IBKR] ⚠️ Trading pausiert — nur Paper-Portfolio wird aktualisiert.`)
+    }
+  }
+
+  // ═══ EDGE 1: VIX FEAR-FILTER ═══
+  let vixLevel = 20 // Default: normal
+  let marketFear = 'NORMAL'
+  try {
+    const vixRaw = await fetchYahooChart('%5EVIX', '5d', '1d')
+    const vixOhlcv = parseOHLCV(vixRaw)
+    if (vixOhlcv.length > 0) {
+      vixLevel = vixOhlcv[vixOhlcv.length - 1].close
+      if (vixLevel > 35) marketFear = 'EXTREME'       // Crash-Modus: KEINE Käufe
+      else if (vixLevel > 25) marketFear = 'HIGH'      // Vorsicht: Position -50%
+      else if (vixLevel < 15) marketFear = 'LOW'        // Ruhig: aggressiver kaufen
+      else marketFear = 'NORMAL'
+    }
+    console.log(`[VIX] ${vixLevel.toFixed(1)} → Angst-Level: ${marketFear}${marketFear === 'EXTREME' ? ' ⚠️ KEINE KÄUFE!' : ''}`)
+  } catch { console.log('[VIX] Konnte VIX nicht laden — fahre normal fort') }
+
+  // ═══ EDGE 2: MARKT-REGIME (SPY vs SMA200) ═══
+  let marketRegime = 'NEUTRAL'
+  let benchmarkOhlcv = []
+  try {
+    const benchRaw = await fetchYahooChart('SPY', '1y', '1d')
+    benchmarkOhlcv = parseOHLCV(benchRaw)
+    if (benchmarkOhlcv.length >= 200) {
+      const spyPrice = benchmarkOhlcv[benchmarkOhlcv.length - 1].close
+      const spySma200 = calcSMA(benchmarkOhlcv, 200)
+      const spySma50 = calcSMA(benchmarkOhlcv, 50)
+      const s200 = spySma200[spySma200.length - 1]
+      const s50 = spySma50[spySma50.length - 1]
+      if (spyPrice > s200 && spyPrice > s50) marketRegime = 'BULL'
+      else if (spyPrice < s200 && spyPrice < s50) marketRegime = 'BEAR'
+      else marketRegime = 'NEUTRAL'
+      console.log(`[REGIME] SPY $${spyPrice.toFixed(0)} | SMA50 $${s50.toFixed(0)} | SMA200 $${s200.toFixed(0)} → ${marketRegime}${marketRegime === 'BEAR' ? ' ⚠️ Defensiv-Modus' : ''}`)
+    }
+  } catch { console.log('[REGIME] Konnte Markt-Regime nicht ermitteln') }
 
   console.log(`[AUTO-TRADER V3] Prüfe ${data.config.watchlist.length} Symbole...`)
 
@@ -745,16 +881,16 @@ async function checkAndTrade() {
     if (weak.length > 0) console.log(`[SEKTOR] Schwach: ${weak.join(', ')}`)
   } catch { console.log('[SEKTOR] Konnte Sektordaten nicht laden') }
 
-  // ═══ PRO: Fetch benchmark (SPY) for relative strength ═══
-  let benchmarkOhlcv = []
-  try {
-    const benchRaw = await fetchYahooChart('SPY', '6mo', '1d')
-    benchmarkOhlcv = parseOHLCV(benchRaw)
-  } catch { /* skip */ }
-
   // ═══ PRO: Check earnings season ═══
   const earnings = getEarningsWarning()
   if (earnings.active) console.log(`[EARNINGS] ${earnings.message}`)
+
+  // ═══ EDGE 4: Korrelations-Schutz — Track Sektoren der offenen Positionen ═══
+  const sectorCount = {}
+  for (const pos of data.portfolio.positions) {
+    const sec = getSymbolSector(pos.symbol)
+    sectorCount[sec] = (sectorCount[sec] || 0) + 1
+  }
 
   for (const symbol of data.config.watchlist) {
     try {
@@ -763,8 +899,40 @@ async function checkAndTrade() {
       const quote = getQuoteFromChart(raw, symbol)
       if (!quote || quote.price <= 0 || ohlcv.length < 50) continue
 
-      const signal = generateSignalForSymbol(ohlcv, symbol, data.config.strategy)
       const price = quote.price
+      const meta = raw?.chart?.result?.[0]?.meta || {}
+      const alreadyHeld = data.portfolio.positions.find(p => p.symbol === symbol)
+
+      // ═══ EDGE 3: Earnings-Kalender — nicht vor Earnings kaufen ═══
+      const earningsTs = meta.earningsTimestamp || meta.earningsTimestampStart
+      let earningsSoon = false
+      if (earningsTs) {
+        const daysToEarnings = (earningsTs - Date.now() / 1000) / 86400
+        if (daysToEarnings > 0 && daysToEarnings < 3) {
+          earningsSoon = true
+          if (!alreadyHeld) {
+            console.log(`[EARNINGS] ⚠️ ${symbol}: Earnings in ${daysToEarnings.toFixed(0)} Tagen — Kauf blockiert`)
+          }
+        }
+      }
+
+      // ═══ EDGE 5: Pre-Market Gap-Erkennung ═══
+      const preMarketPrice = meta.preMarketPrice || 0
+      let preMarketGap = 0
+      if (preMarketPrice > 0 && ohlcv.length > 0) {
+        const lastClose = ohlcv[ohlcv.length - 1].close
+        preMarketGap = ((preMarketPrice - lastClose) / lastClose) * 100
+      }
+
+      // ═══ AUTO-SCALE: Skip symbols too expensive for current portfolio ═══
+      const priceEUR = priceInEUR(price, symbol)
+      const maxInvestPerPos = currentValue * (effectiveMaxPositionPct / 100)
+      if (!alreadyHeld && priceEUR > maxInvestPerPos) {
+        // Can't even buy 1 share in EUR — skip silently
+        continue
+      }
+
+      const signal = generateSignalForSymbol(ohlcv, symbol, data.config.strategy)
 
       // ═══ PRO: Add sector rotation signal ═══
       const sectorSignal = getSectorSignal(symbol, sectorStrength)
@@ -831,7 +999,7 @@ async function checkAndTrade() {
 
         // Hard stop-loss (safety net)
         if (data.config.stopLossPercent && pnlPercent <= -data.config.stopLossPercent) {
-          executeSell(data, symbol, price, `Hard Stop-Loss (-${data.config.stopLossPercent}%) ausgelöst`, signal)
+          await executeSell(data, symbol, price, `Hard Stop-Loss (-${data.config.stopLossPercent}%) ausgelöst`, signal)
           continue
         }
 
@@ -841,7 +1009,7 @@ async function checkAndTrade() {
           if (sellQty > 0) {
             const pnl = (price - held.entryPrice) * sellQty
             held.quantity -= sellQty
-            data.portfolio.cash += sellQty * price
+            data.portfolio.cash += sellQty * priceInEUR(price, symbol)
             data.tradeLog.unshift({
               id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
               symbol, type: 'PARTIAL_SELL', quantity: sellQty, price,
@@ -861,13 +1029,57 @@ async function checkAndTrade() {
 
         // Trend break: sell signal with low confidence
         if (data.config.sellSignals.includes(signal.direction) && signal.confidence <= data.config.sellConfidence) {
-          executeSell(data, symbol, price, `Signal: ${signal.direction} (${signal.confidence}%) — Trendbruch`, signal)
+          await executeSell(data, symbol, price, `Signal: ${signal.direction} (${signal.confidence}%) — Trendbruch`, signal)
           continue
         }
       }
 
       // Check buy signal (V3: momentum + trend + RSI + pro signals)
       if (!held && data.config.allowedSignals.includes(signal.direction) && signal.confidence >= data.config.minConfidence) {
+
+        // ═══ EDGE 1: VIX Fear-Filter ═══
+        if (marketFear === 'EXTREME') {
+          console.log(`[VIX] ❌ ${symbol}: Kauf blockiert — VIX ${vixLevel.toFixed(0)} (Extreme Fear)`)
+          continue
+        }
+        if (marketFear === 'HIGH') {
+          signal.confidence = Math.round(signal.confidence * 0.7) // -30% Konfidenz
+          signal.reasons.push(`⚠️ VIX ${vixLevel.toFixed(0)} hoch → Konfidenz reduziert`)
+        }
+        if (marketFear === 'LOW') {
+          signal.confidence = Math.min(100, signal.confidence + 5)
+          signal.reasons.push(`✅ VIX ${vixLevel.toFixed(0)} niedrig → leicht aggressiver`)
+        }
+
+        // ═══ EDGE 2: Markt-Regime ═══
+        if (marketRegime === 'BEAR') {
+          signal.confidence = Math.round(signal.confidence * 0.6) // -40% Konfidenz im Bärenmarkt
+          signal.reasons.push(`🐻 Bärenmarkt (SPY unter SMA200+50) → Konfidenz stark reduziert`)
+          if (signal.confidence < data.config.minConfidence) {
+            console.log(`[REGIME] ❌ ${symbol}: Kaufsignal zu schwach im Bärenmarkt (${signal.confidence}%)`)
+            continue
+          }
+        }
+
+        // ═══ EDGE 3: Earnings-Schutz pro Aktie ═══
+        if (earningsSoon) {
+          console.log(`[EARNINGS] ❌ ${symbol}: Kauf blockiert — Earnings in <3 Tagen`)
+          continue
+        }
+
+        // ═══ EDGE 4: Korrelations-Schutz ═══
+        const sector = getSymbolSector(symbol)
+        if (sector !== 'INDEX' && sector !== 'OTHER' && (sectorCount[sector] || 0) >= 2) {
+          console.log(`[KORRELATION] ❌ ${symbol}: Bereits 2 Positionen im Sektor ${sector} — überspringe`)
+          continue
+        }
+
+        // ═══ EDGE 5: Pre-Market Gap ═══
+        if (preMarketGap > 5) {
+          console.log(`[GAP] ❌ ${symbol}: Pre-Market Gap +${preMarketGap.toFixed(1)}% → nicht dem Hype hinterherkaufen`)
+          continue
+        }
+
         // ═══ PRO: Weekly trend must confirm ═══
         if (signal.weeklyTrend && !signal.weeklyTrend.confirmed) {
           console.log(`[AUTO-TRADER] ${symbol}: Kaufsignal, aber Wochentrend bestätigt nicht — überspringe`)
@@ -880,9 +1092,32 @@ async function checkAndTrade() {
           signal.confidence, earnings
         )
         if (smartSize.quantity > 0) {
-          // Override the default buy with smart sizing
+          // ═══ AI ADVISOR: Claude prüft den Trade ═══
+          const aiAdvice = await getAIAdvice({
+            action: 'BUY', symbol, price, signal: signal.direction,
+            strategy: signal.strategy, confidence: signal.confidence,
+            reasons: signal.reasons, rsi: signal.rsi,
+            atr: signal.atr, portfolio: data.portfolio,
+            recentTrades: data.tradeLog, earningsActive: earnings.active,
+          })
+
+          if (!aiAdvice.approved) {
+            console.log(`[AI-ADVISOR] ❌ ${symbol} ABGELEHNT: ${aiAdvice.reason}`)
+            data.tradeLog.unshift({
+              id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+              symbol, type: 'AI_REJECTED', quantity: 0, price,
+              date: new Date().toISOString(),
+              reason: `🤖 KI-Berater: ${aiAdvice.reason}`,
+              confidence: aiAdvice.adjustedConfidence, pnl: 0,
+            })
+            continue
+          }
+
+          console.log(`[AI-ADVISOR] ✅ ${symbol} GENEHMIGT: ${aiAdvice.reason} (Konfidenz: ${aiAdvice.adjustedConfidence}%)`)
+          signal.confidence = aiAdvice.adjustedConfidence
+          signal.reasons.push(`🤖 KI: ${aiAdvice.reason}`)
           signal.reasons.push(`📐 ${smartSize.reason}`)
-          executeBuyWithSize(data, symbol, price, signal, smartSize.quantity)
+          await executeBuyWithSize(data, symbol, price, signal, smartSize.quantity)
         }
       }
 
@@ -906,7 +1141,18 @@ async function checkAndTrade() {
   saveData(data)
 
   const pnl = totalValue - data.config.initialCapital
-  console.log(`[AUTO-TRADER] Fertig | Portfolio: $${totalValue.toFixed(2)} | P&L: $${pnl.toFixed(2)} | Positionen: ${data.portfolio.positions.length}`)
+  console.log(`[AUTO-TRADER] Fertig | Portfolio: €${totalValue.toFixed(2)} | P&L: €${pnl.toFixed(2)} | Positionen: ${data.portfolio.positions.length}`)
+
+  // ═══ AI: Tägliche Trade-Analyse (einmal pro Tag) ═══
+  const today = new Date().toISOString().slice(0, 10)
+  if (data.stats.lastAIAnalysis !== today && data.tradeLog.length >= 5) {
+    const analysis = await analyzeTradeHistory(data.tradeLog, data.portfolio)
+    if (analysis) {
+      console.log(`[AI-ADVISOR] 📊 Tägliche Analyse:\n${analysis}`)
+      data.stats.lastAIAnalysis = today
+      data.stats.lastAIInsight = analysis
+    }
+  }
 
   return data
 }
@@ -945,6 +1191,39 @@ export async function runManualCheck() {
   return await checkAndTrade()
 }
 
+// ── IBKR Keep-Alive: verhindert Session-Timeout ────────────
+let keepAliveId = null
+
+function startIBKRKeepAlive() {
+  if (keepAliveId) return // Already running
+
+  // Ping every 5 minutes to keep IBKR session alive
+  keepAliveId = setInterval(async () => {
+    const data = loadData()
+    const ibkr = getIBKRClient(data.config)
+    if (!ibkr) return
+
+    try {
+      await ibkr.keepAlive()
+      const auth = await ibkr.checkAuth()
+      if (!auth.authenticated) {
+        console.log(`[IBKR-KEEPALIVE] ⚠️ Session abgelaufen — bitte neu einloggen unter ${data.config.ibkr.gatewayUrl}`)
+      }
+    } catch {
+      // Gateway not running — silent
+    }
+  }, 5 * 60 * 1000) // Every 5 minutes
+
+  console.log('[IBKR-KEEPALIVE] Session-Wächter aktiv (alle 5 Min)')
+}
+
+function stopIBKRKeepAlive() {
+  if (keepAliveId) {
+    clearInterval(keepAliveId)
+    keepAliveId = null
+  }
+}
+
 // ── Interval runner ─────────────────────────────────────────
 let intervalId = null
 
@@ -952,6 +1231,11 @@ export function startAutoTrader() {
   const data = loadData()
   const minutes = data.config.checkIntervalMinutes || 15
   console.log(`[AUTO-TRADER] Gestartet — prüft alle ${minutes} Minuten`)
+
+  // Start IBKR keep-alive if configured
+  if (data.config.ibkr?.enabled) {
+    startIBKRKeepAlive()
+  }
 
   // Run immediately on start
   checkAndTrade().catch(err => console.error('[AUTO-TRADER] Error:', err))
@@ -966,6 +1250,7 @@ export function stopAutoTrader() {
   if (intervalId) {
     clearInterval(intervalId)
     intervalId = null
-    console.log('[AUTO-TRADER] Gestoppt')
   }
+  stopIBKRKeepAlive()
+  console.log('[AUTO-TRADER] Gestoppt')
 }

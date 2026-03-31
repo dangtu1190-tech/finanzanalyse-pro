@@ -97,7 +97,8 @@ export class IBKRClient {
 
   // ── Search / Contract Lookup ─────────────────────────────
   async searchSymbol(symbol) {
-    const data = await this.request('GET', `/v1/api/iserver/secdef/search?symbol=${encodeURIComponent(symbol)}`)
+    // IBKR secdef/search requires POST with JSON body
+    const data = await this.request('POST', '/v1/api/iserver/secdef/search', { symbol })
     if (!Array.isArray(data)) return []
     return data.map(s => ({
       conid: s.conid,
@@ -154,12 +155,15 @@ export class IBKRClient {
 
   async sellAll(accountId, symbol) {
     const positions = await this.getPositions(accountId)
-    const pos = positions.find(p => p.symbol === symbol || p.symbol.startsWith(symbol))
+    // Exact match first, then try without exchange suffix (e.g. "BMW" for "BMW.DE")
+    const baseSymbol = symbol.split('.')[0]
+    const pos = positions.find(p => p.symbol === symbol)
+      || positions.find(p => p.symbol === baseSymbol)
     if (!pos || pos.quantity <= 0) {
       console.log(`[IBKR] Keine Position in ${symbol}`)
       return null
     }
-    return this.sellMarket(accountId, symbol, pos.quantity)
+    return this.sellMarket(accountId, pos.symbol, pos.quantity)
   }
 
   // ── Order History ────────────────────────────────────────
