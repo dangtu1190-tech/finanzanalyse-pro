@@ -322,8 +322,8 @@ export function AutoTraderPage() {
             </div>
           </Card>
 
-          {/* Alpaca Broker */}
-          <AlpacaSettings config={config} onUpdate={updateConfig} />
+          {/* IBKR Broker */}
+          <IBKRSettings config={config} onUpdate={updateConfig} />
 
           <Button variant="danger" size="sm" onClick={resetTrader} className="w-full">
             <RotateCcw size={14} className="mr-1" /> Portfolio zurücksetzen
@@ -346,105 +346,80 @@ function StatBox({ icon, label, value, sub, positive }: {
   )
 }
 
-function AlpacaSettings({ config, onUpdate }: { config: any; onUpdate: (u: any) => void }) {
-  const [apiKey, setApiKey] = useState(config.alpaca?.apiKey || '')
-  const [secretKey, setSecretKey] = useState(config.alpaca?.secretKey || '')
-  const [paper, setPaper] = useState(config.alpaca?.paper !== false)
+function IBKRSettings({ config, onUpdate }: { config: any; onUpdate: (u: any) => void }) {
+  const [gatewayUrl, setGatewayUrl] = useState(config.ibkr?.gatewayUrl || 'https://localhost:5000')
+  const [accountId, setAccountId] = useState(config.ibkr?.accountId || '')
   const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; accountId?: string } | null>(null)
 
   async function handleTest() {
     setTesting(true)
     setTestResult(null)
     try {
-      const res = await fetch('/api/alpaca/test', {
+      const res = await fetch('/api/ibkr/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, secretKey, paper }),
+        body: JSON.stringify({ gatewayUrl }),
       })
       const result = await res.json()
       setTestResult(result)
+      if (result.success && result.accountId) {
+        setAccountId(result.accountId)
+      }
     } catch {
-      setTestResult({ success: false, message: 'Verbindung fehlgeschlagen' })
+      setTestResult({ success: false, message: 'Gateway nicht erreichbar. Ist der Client Portal Gateway gestartet?' })
     }
     setTesting(false)
   }
 
   function handleSave() {
-    onUpdate({ alpaca: { enabled: true, apiKey, secretKey, paper } })
-    setTestResult({ success: true, message: 'Gespeichert! Alpaca ist jetzt aktiv.' })
+    onUpdate({ ibkr: { enabled: true, gatewayUrl, accountId } })
+    setTestResult({ success: true, message: 'Gespeichert! IBKR ist jetzt aktiv.' })
   }
 
   function handleDisable() {
-    onUpdate({ alpaca: { enabled: false, apiKey: '', secretKey: '', paper: true } })
-    setApiKey('')
-    setSecretKey('')
+    onUpdate({ ibkr: { enabled: false, gatewayUrl: 'https://localhost:5000', accountId: '' } })
+    setAccountId('')
     setTestResult(null)
   }
 
   const inputClass = "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
 
   return (
-    <Card title="Broker: Alpaca" action={
-      config.alpaca?.enabled
+    <Card title="Broker: Interactive Brokers" action={
+      config.ibkr?.enabled
         ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold text-green-700 dark:bg-green-900/30 dark:text-green-400">
-            {config.alpaca.paper ? 'PAPER' : 'LIVE'}
+            AKTIV
           </span>
         : <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-bold text-gray-500 dark:bg-gray-800">AUS</span>
     }>
       <div className="space-y-3">
         <div className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
-          Alpaca ermöglicht echte US-Aktien Trades. Starte mit Paper Trading (kein Risiko).
-          Account erstellen: <a href="https://alpaca.markets" target="_blank" rel="noopener noreferrer" className="underline font-bold">alpaca.markets</a>
+          IBKR handelt alle Aktien weltweit (US, DAX, Europa). SEPA-Einzahlung in EUR.
+          Benötigt den <strong>Client Portal Gateway</strong> lokal.
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium dark:text-gray-300">API Key</label>
-          <input type="text" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="PK..." className={inputClass} />
+          <label className="mb-1 block text-xs font-medium dark:text-gray-300">Gateway URL</label>
+          <input type="text" value={gatewayUrl} onChange={e => setGatewayUrl(e.target.value)} placeholder="https://localhost:5000" className={inputClass} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium dark:text-gray-300">Secret Key</label>
-          <input type="password" value={secretKey} onChange={e => setSecretKey(e.target.value)} placeholder="Geheim..." className={inputClass} />
+          <label className="mb-1 block text-xs font-medium dark:text-gray-300">Account ID</label>
+          <input type="text" value={accountId} onChange={e => setAccountId(e.target.value)} placeholder="Wird automatisch ermittelt beim Test" className={inputClass} />
         </div>
 
-        {/* Paper / Live Toggle */}
         <div className="flex gap-2">
-          <button
-            onClick={() => setPaper(true)}
-            className={`flex-1 rounded-lg border p-2 text-xs font-medium transition-colors ${
-              paper ? 'border-green-500 bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'border-gray-200 dark:border-gray-700 dark:text-gray-400'
-            }`}
-          >
-            Paper Trading (sicher)
-          </button>
-          <button
-            onClick={() => { if (confirm('ACHTUNG: Live Trading verwendet echtes Geld! Wirklich umschalten?')) setPaper(false) }}
-            className={`flex-1 rounded-lg border p-2 text-xs font-medium transition-colors ${
-              !paper ? 'border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400' : 'border-gray-200 dark:border-gray-700 dark:text-gray-400'
-            }`}
-          >
-            Live Trading (echtes Geld)
-          </button>
-        </div>
-
-        {!paper && (
-          <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-900/20 dark:text-red-400">
-            <strong>WARNUNG:</strong> Live Trading verwendet echtes Geld. Verluste sind real und unwiderruflich.
-          </div>
-        )}
-
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={handleTest} disabled={!apiKey || !secretKey || testing} className="flex-1">
+          <Button variant="secondary" size="sm" onClick={handleTest} disabled={testing} className="flex-1">
             {testing ? 'Teste...' : 'Verbindung testen'}
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={!apiKey || !secretKey} className="flex-1">
+          <Button size="sm" onClick={handleSave} disabled={!accountId} className="flex-1">
             Speichern & Aktivieren
           </Button>
         </div>
 
-        {config.alpaca?.enabled && (
+        {config.ibkr?.enabled && (
           <button onClick={handleDisable} className="w-full text-xs text-red-500 hover:underline">
-            Alpaca deaktivieren
+            IBKR deaktivieren
           </button>
         )}
 

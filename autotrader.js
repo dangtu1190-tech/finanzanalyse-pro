@@ -12,7 +12,8 @@ import {
   detectInstitutionalActivity, analyzeRelativeStrength,
   checkWeeklyTrend, calculateSmartPositionSize,
 } from './pro-signals.js'
-import { createAlpacaClient, testAlpacaConnection } from './alpaca.js'
+// import { createAlpacaClient, testAlpacaConnection } from './alpaca.js'
+import { createIBKRClient } from './ibkr.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_FILE = join(__dirname, 'autotrader-data.json')
@@ -48,12 +49,11 @@ const DEFAULT_CONFIG = {
                                // auto = SMA200 for leveraged ETFs, V4 for stocks, V2 for regular ETFs
   allowedSignals: ['STRONG_BUY', 'BUY'],
   sellSignals: ['STRONG_SELL', 'SELL'],
-  // Alpaca broker integration
-  alpaca: {
-    enabled: false,          // Set to true to execute real trades
-    apiKey: '',
-    secretKey: '',
-    paper: true,             // true = paper trading, false = real money
+  // Interactive Brokers (IBKR) broker integration
+  ibkr: {
+    enabled: false,          // Set to true to execute real trades via IBKR
+    gatewayUrl: 'https://localhost:5000',  // IBKR Client Portal Gateway
+    accountId: '',           // IBKR Account ID (wird beim Test automatisch ermittelt)
   },
 }
 
@@ -618,10 +618,10 @@ function executeBuy(data, symbol, price, signal) {
   return trade
 }
 
-// Get Alpaca client if configured
-function getAlpacaClient(config) {
-  if (!config.alpaca?.enabled || !config.alpaca?.apiKey || !config.alpaca?.secretKey) return null
-  return createAlpacaClient(config.alpaca.apiKey, config.alpaca.secretKey, config.alpaca.paper !== false)
+// Get IBKR client if configured
+function getIBKRClient(config) {
+  if (!config.ibkr?.enabled) return null
+  return createIBKRClient(config.ibkr.gatewayUrl)
 }
 
 async function executeBuyWithSize(data, symbol, price, signal, smartQuantity) {
@@ -630,25 +630,21 @@ async function executeBuyWithSize(data, symbol, price, signal, smartQuantity) {
   if (existing) return null
   if (portfolio.positions.length >= config.maxOpenPositions) return null
 
-  // Skip non-US symbols for Alpaca (can only trade US stocks)
-  const alpaca = getAlpacaClient(config)
-  const isUSSymbol = !symbol.includes('.')
-
+  const ibkr = getIBKRClient(config)
   const quantity = Math.min(smartQuantity, Math.floor(portfolio.cash / price))
   if (quantity <= 0) return null
 
-  // ═══ ALPACA: Execute real order ═══
-  let alpacaOrder = null
-  if (alpaca && isUSSymbol) {
+  // ═══ IBKR: Execute real order ═══
+  let brokerOrder = null
+  let brokerInfo = ''
+  if (ibkr && config.ibkr.accountId) {
     try {
-      const market = await alpaca.isMarketOpen()
-      if (!market.isOpen) {
-        console.log(`[ALPACA] Markt geschlossen — Order wird bei Eröffnung ausgeführt`)
-      }
-      alpacaOrder = await alpaca.buyMarket(symbol, quantity)
-      console.log(`[ALPACA] ✅ Order platziert: ${alpacaOrder.status} — ID: ${alpacaOrder.id}`)
+      brokerOrder = await ibkr.buyMarket(config.ibkr.accountId, symbol, quantity)
+      brokerInfo = ` | IBKR LIVE: Order platziert`
+      console.log(`[IBKR] ✅ BUY Order platziert für ${quantity}x ${symbol}`)
     } catch (err) {
-      console.error(`[ALPACA] ❌ Order fehlgeschlagen: ${err.message}`)
+      console.error(`[IBKR] ❌ BUY Order fehlgeschlagen: ${err.message}`)
+      brokerInfo = ` | IBKR Fehler: ${err.message}`
       // Still track in paper portfolio
     }
   }
@@ -661,17 +657,13 @@ async function executeBuyWithSize(data, symbol, price, signal, smartQuantity) {
     currentPrice: price, highestPrice: price,
   })
 
-  const brokerInfo = alpacaOrder
-    ? ` | Alpaca ${config.alpaca.paper ? 'Paper' : 'LIVE'}: ${alpacaOrder.status}`
-    : isUSSymbol ? '' : ' | Nur Paper (kein US-Symbol)'
-
   const trade = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     symbol, type: 'BUY', quantity, price,
     date: new Date().toISOString(),
     reason: `V3 Signal: ${signal.direction} (${signal.confidence}%) — ${signal.reasons.join(', ')}${brokerInfo}`,
     confidence: signal.confidence, pnl: 0,
-    alpacaOrderId: alpacaOrder?.id || null,
+    ibkrOrder: brokerOrder || null,
   }
 
   data.tradeLog.unshift(trade)
@@ -689,15 +681,14 @@ async function executeSell(data, symbol, price, reason, signal) {
   const pnl = (price - pos.entryPrice) * pos.quantity
   const pnlPercent = ((price - pos.entryPrice) / pos.entryPrice) * 100
 
-  // ═══ ALPACA: Execute real sell order ═══
-  const alpaca = getAlpacaClient(config)
-  const isUSSymbol = !symbol.includes('.')
-  if (alpaca && isUSSymbol) {
+  // ═══ IBKR: Execute real sell order ═══
+  const ibkr = getIBKRClient(config)
+  if (ibkr && config.ibkr.accountId) {
     try {
-      await alpaca.sellAll(symbol)
-      console.log(`[ALPACA] ✅ Verkauf ${symbol} ausgeführt`)
+      await ibkr.sellAll(config.ibkr.accountId, symbol)
+      console.log(`[IBKR] ✅ Verkauf ${symbol} ausgeführt`)
     } catch (err) {
-      console.error(`[ALPACA] ❌ Verkauf ${symbol} fehlgeschlagen: ${err.message}`)
+      console.error(`[IBKR] ❌ Verkauf ${symbol} fehlgeschlagen: ${err.message}`)
     }
   }
 

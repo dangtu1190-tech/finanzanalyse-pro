@@ -7,7 +7,7 @@ import {
   getAutoTraderData, updateAutoTraderConfig, resetAutoTrader,
   runManualCheck, startAutoTrader
 } from './autotrader.js'
-import { testAlpacaConnection } from './alpaca.js'
+import { testIBKRConnection } from './ibkr.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PORT = parseInt(process.env.PORT || '3000')
@@ -85,10 +85,10 @@ const server = createServer(async (req, res) => {
     return jsonResponse(res, data)
   }
 
-  // ── Alpaca connection test ─────────────────────────────
-  if (url.pathname === '/api/alpaca/test' && req.method === 'POST') {
+  // ── IBKR connection test ───────────────────────────────
+  if (url.pathname === '/api/ibkr/test' && req.method === 'POST') {
     const body = await readBody(req)
-    const result = await testAlpacaConnection(body.apiKey, body.secretKey, body.paper !== false)
+    const result = await testIBKRConnection(body.gatewayUrl)
     return jsonResponse(res, result)
   }
 
